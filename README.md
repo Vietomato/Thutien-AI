@@ -37,3 +37,15 @@ Regenerate demo data:
 - Open a pull request into `dev`. Never push directly to `dev` or `main`.
 - Do not merge your own pull request.
 - Do not change the data contract silently. Tell the people who consume it.
+
+## Odoo (local)
+
+    docker compose up -d
+    # open http://localhost:8069, create database "odoo", install Invoicing
+    py scripts/seed_odoo.py
+
+Port 5432 is often taken by a local PostgreSQL, so the compose file maps the database to 5433.
+Create the read-only role (see scripts/create_readonly_role.sql), then run the API with:
+
+    $env:DATA_SOURCE="odoo"; $env:ODOO_DB_PORT="5433"
+    $env:ODOO_RO_USER="thutien_ro"; $env:ODOO_RO_PASSWORD="<your password>"
