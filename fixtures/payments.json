@@ -1,0 +1,156 @@
+[
+ {
+  "payment_id": "PAY-001",
+  "invoice_id": "INV-001",
+  "customer_id": "C001",
+  "payment_date": "2026-01-13",
+  "amount": 33000000
+ },
+ {
+  "payment_id": "PAY-002",
+  "invoice_id": "INV-002",
+  "customer_id": "C001",
+  "payment_date": "2026-02-09",
+  "amount": 16000000
+ },
+ {
+  "payment_id": "PAY-003",
+  "invoice_id": "INV-003",
+  "customer_id": "C001",
+  "payment_date": "2026-03-07",
+  "amount": 72000000
+ },
+ {
+  "payment_id": "PAY-004",
+  "invoice_id": "INV-004",
+  "customer_id": "C001",
+  "payment_date": "2026-03-31",
+  "amount": 47000000
+ },
+ {
+  "payment_id": "PAY-005",
+  "invoice_id": "INV-005",
+  "customer_id": "C001",
+  "payment_date": "2026-04-24",
+  "amount": 27000000
+ },
+ {
+  "payment_id": "PAY-006",
+  "invoice_id": "INV-006",
+  "customer_id": "C002",
+  "payment_date": "2026-01-13",
+  "amount": 64000000
+ },
+ {
+  "payment_id": "PAY-007",
+  "invoice_id": "INV-007",
+  "customer_id": "C002",
+  "payment_date": "2026-02-09",
+  "amount": 57000000
+ },
+ {
+  "payment_id": "PAY-008",
+  "invoice_id": "INV-008",
+  "customer_id": "C002",
+  "payment_date": "2026-03-07",
+  "amount": 33000000
+ },
+ {
+  "payment_id": "PAY-009",
+  "invoice_id": "INV-009",
+  "customer_id": "C002",
+  "payment_date": "2026-04-03",
+  "amount": 11000000
+ },
+ {
+  "payment_id": "PAY-010",
+  "invoice_id": "INV-010",
+  "customer_id": "C002",
+  "payment_date": "2026-04-30",
+  "amount": 69000000
+ },
+ {
+  "payment_id": "PAY-011",
+  "invoice_id": "INV-011",
+  "customer_id": "C002",
+  "payment_date": "2026-05-28",
+  "amount": 22000000
+ },
+ {
+  "payment_id": "PAY-012",
+  "invoice_id": "INV-012",
+  "customer_id": "C002",
+  "payment_date": "2026-06-26",
+  "amount": 36000000
+ },
+ {
+  "payment_id": "PAY-013",
+  "invoice_id": "INV-013",
+  "customer_id": "C002",
+  "payment_date": "2026-07-29",
+  "amount": 73000000
+ },
+ {
+  "payment_id": "PAY-014",
+  "invoice_id": "INV-014",
+  "customer_id": "C002",
+  "payment_date": "2026-09-07",
+  "amount": 37000000
+ },
+ {
+  "payment_id": "PAY-015",
+  "invoice_id": "INV-015",
+  "customer_id": "C003",
+  "payment_date": "2026-01-19",
+  "amount": 57000000
+ },
+ {
+  "payment_id": "PAY-016",
+  "invoice_id": "INV-016",
+  "customer_id": "C003",
+  "payment_date": "2026-02-15",
+  "amount": 30000000
+ },
+ {
+  "payment_id": "PAY-017",
+  "invoice_id": "INV-017",
+  "customer_id": "C003",
+  "payment_date": "2026-03-09",
+  "amount": 50000000
+ },
+ {
+  "payment_id": "PAY-018",
+  "invoice_id": "INV-018",
+  "customer_id": "C003",
+  "payment_date": "2026-04-09",
+  "amount": 48000000
+ },
+ {
+  "payment_id": "PAY-019",
+  "invoice_id": "INV-019",
+  "customer_id": "C004",
+  "payment_date": "2026-01-25",
+  "amount": 30000000
+ },
+ {
+  "payment_id": "PAY-020",
+  "invoice_id": "INV-020",
+  "customer_id": "C004",
+  "payment_date": "2026-02-23",
+  "amount": 57000000
+ },
+ {
+  "payment_id": "PAY-021",
+  "invoice_id": "INV-021",
+  "customer_id": "C004",
+  "payment_date": "2026-03-13",
+  "amount": 64000000
+ },
+ {
+  "payment_id": "PAY-022",
+  "invoice_id": "INV-025",
+  "customer_id": "C003",
+  "payment_date": "2026-10-28",
+  "amount": 30000000
+ }
+]
