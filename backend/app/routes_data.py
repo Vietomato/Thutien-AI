@@ -45,7 +45,7 @@ def summary(user: dict = Depends(require_any_permission("summary:read_all", "sum
 @router.get("/predictions", dependencies=[Depends(require_permission("prediction:read"))])
 def predictions():
     as_of = as_of_date()
-    preds = analytics.predict(odoo_reader.open_invoices(), odoo_reader.paid_delays(), as_of)
+    preds = analytics.predict(odoo_reader.open_invoices(), odoo_reader.paid_delays(as_of), as_of)
     return envelope(items=[p.model_dump(mode="json") for p in preds])
 
 
@@ -53,7 +53,7 @@ def predictions():
 def forecast():
     as_of = as_of_date()
     invoices = odoo_reader.open_invoices()
-    preds = analytics.predict(invoices, odoo_reader.paid_delays(), as_of)
+    preds = analytics.predict(invoices, odoo_reader.paid_delays(as_of), as_of)
     weeks = analytics.forecast(invoices, preds, odoo_reader.supplier_bills(), as_of)
     return envelope(weeks=[w.model_dump(mode="json") for w in weeks],
                     risky_weeks=sum(1 for w in weeks if w.gap_p75 > 0))

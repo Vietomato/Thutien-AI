@@ -91,7 +91,7 @@ def create_draft(body: CreateDraft, user: dict = Depends(require_permission("dra
     late = (as_of - inv.due_date).days
     if late <= 0:
         raise HTTPException(409, "invoice is not overdue")
-    delays = odoo_reader.paid_delays()
+    delays = odoo_reader.paid_delays(as_of)
     pred = analytics.predict_invoice(
         inv, as_of, analytics.group_delays(delays).get(inv.customer_id, []), [d for _, d in delays])
     subject, text = drafts.compose(inv, pred.predicted_date_p50 if pred else as_of)

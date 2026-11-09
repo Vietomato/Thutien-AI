@@ -10,6 +10,7 @@ READ_ENDPOINTS = {
     "/api/summary": {"accountant", "chief_accountant", "customer"},
     "/api/predictions": {"accountant", "chief_accountant"},
     "/api/forecast": {"accountant", "chief_accountant"},
+    "/api/f3/priority": {"accountant", "chief_accountant"},
     "/api/reminders/drafts": {"accountant", "chief_accountant"},
     "/api/reminders/candidates": {"accountant", "chief_accountant"},
     "/api/tasks": {"accountant", "chief_accountant"},
@@ -63,6 +64,18 @@ def test_forecast_and_predictions_come_from_the_fake_data(client, team, auth, fa
     assert f["weeks"][0]["obligations"] == 500_000_000 and f["risky_weeks"] >= 1
     p = client.get("/api/predictions", headers=auth("acc1")).json()["items"]
     assert "INV-B" not in {i["invoice_id"] for i in p}  # disputed: no prediction
+
+
+def test_f3_priority_uses_remaining_balance_and_explains_holds(client, team, auth, fake_odoo):
+    response = client.get("/api/f3/priority", headers=auth("acc1"))
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "odoo"
+    items = {item["invoice_id"]: item for item in payload["items"]}
+    assert items["INV-D"]["remaining_amount"] == 60_000_000
+    assert items["INV-B"]["hold_reasons"] == ["disputed"]
+    assert items["INV-C"]["priority_score"] == "0"
+    assert items["INV-C"]["hold_reasons"] == ["not_overdue"]
 
 
 def test_customer_without_link_sees_nothing(client, make_user, auth, fake_odoo):

@@ -17,7 +17,11 @@
     [h('div', { class: 'loading', role: 'status', text: 'Đang tải...' })]);
   main.appendChild(body);
 
-  var state = { rows: [], preds: {}, team: [], filter: 'all', q: '', selected: null, asOf: '', notice: null };
+  var state = { rows: [], preds: {}, priority: {}, team: [], filter: 'all', q: '', selected: null, asOf: '', notice: null };
+  var holdLabels = {
+    no_remaining_balance: 'Đã tất toán', not_overdue: 'Chưa quá hạn', disputed: 'Đang tranh chấp',
+    missing_contact: 'Thiếu email liên hệ', active_draft_exists: 'Đã có nháp chờ duyệt'
+  };
 
   /* ---------- Row model ---------- */
   function statusOf(r) {
@@ -79,7 +83,7 @@
     h('div', { class: 'table-scroll' }, [
       h('table', { class: 'table' }, [
         h('caption', { class: 'sr-only', text: 'Danh sách hóa đơn còn nợ' }),
-        h('thead', {}, [h('tr', {}, [th('Hóa đơn'), th('Khách hàng'), th('Hạn trả'), th('Còn nợ (VND)', 'num'), th('Dự đoán trả'), th('Trạng thái')])]),
+        h('thead', {}, [h('tr', {}, [th('Ưu tiên'), th('Hóa đơn'), th('Khách hàng'), th('Hạn trả'), th('Còn nợ (VND)', 'num'), th('Dự đoán trả'), th('Trạng thái'), th('Đủ điều kiện nhắc')])]),
         tbody
       ])
     ]),
@@ -93,7 +97,7 @@
     var shown = state.rows.filter(function (r) { return matchFilter(r) && matchQuery(r); });
     emptyMsg.hidden = shown.length > 0;
     shown.forEach(function (r) {
-      var inv = r.inv, st = statusOf(r), p = state.preds[inv.invoice_id];
+      var inv = r.inv, st = statusOf(r), p = state.preds[inv.invoice_id], priority = r.priority;
       var dueNote = r.late > 0 ? 'quá hạn ' + r.late + ' ngày' : (r.late === 0 ? 'đến hạn hôm nay' : 'còn ' + (-r.late) + ' ngày');
       var partial = inv.remaining_amount < inv.invoice_amount;
       var predCell;
@@ -111,6 +115,10 @@
       }
       var sel = state.selected === inv.invoice_id;
       tbody.appendChild(h('tr', { class: sel ? 'selected' : '', onclick: function () { select(inv.invoice_id); } }, [
+        h('td', {}, [
+          h('div', { class: 'cell-strong', text: '#' + priority.rank }),
+          h('div', { class: 'cell-sub', text: fmt.money(Number(priority.priority_score)) + ' điểm' })
+        ]),
         h('td', {}, [h('button', {
           type: 'button', class: 'row-btn', text: inv.invoice_id, 'aria-pressed': String(sel),
           'aria-label': 'Xem chi tiết hóa đơn ' + inv.invoice_id,
@@ -123,7 +131,10 @@
           partial ? h('div', { class: 'cell-sub', text: 'trên tổng ' + fmt.money(inv.invoice_amount) }) : null
         ]),
         h('td', {}, predCell),
-        h('td', {}, [h('span', { class: 'tag ' + st.cls, text: st.text })])
+        h('td', {}, [h('span', { class: 'tag ' + st.cls, text: st.text })]),
+        h('td', {}, [priority.eligible_for_reminder
+          ? h('span', { class: 'tag tag-ok', text: 'Có thể tạo nháp' })
+          : h('span', { class: 'tag tag-part', text: priority.hold_reasons.map(function (reason) { return holdLabels[reason] || reason; }).join(', ') })])
       ]));
     });
   }
@@ -141,7 +152,7 @@
 
   function actions(r) {
     var inv = r.inv, nodes = [];
-    var canDraft = Api.can('draft:create') && r.late > 0 && inv.dispute_status !== 'disputed';
+    var canDraft = Api.can('draft:create') && r.priority.eligible_for_reminder;
     if (canDraft) {
       var btn = h('button', { type: 'button', class: 'btn-ghost', text: 'Soạn bản nháp nhắc nợ' });
       btn.addEventListener('click', function () {
@@ -187,6 +198,11 @@
       h('div', { class: 'explain-label', text: 'Vì sao dự đoán này' }),
       h('h2', { text: inv.invoice_id + ' · ' + inv.display_name })
     ]));
+    explain.appendChild(h('p', { text: 'Ưu tiên F3: ' + fmt.money(Number(r.priority.priority_score)) + ' điểm · tỷ lệ trả trễ ' +
+      Math.round(Number(r.priority.late_rate) * 100) + '% (' + r.priority.late_rate_source.replaceAll('_', ' ') + ') · quá hạn ' + r.priority.days_overdue + ' ngày.' }));
+    if (!r.priority.eligible_for_reminder) {
+      explain.appendChild(h('div', { class: 'note', text: 'Chưa đủ điều kiện nhắc: ' + r.priority.hold_reasons.map(function (reason) { return holdLabels[reason] || reason; }).join(', ') + '.' }));
+    }
 
     if (inv.dispute_status === 'disputed' || !p) {
       explain.appendChild(h('p', { text: 'Hóa đơn đang tranh chấp nên hệ thống không dự đoán ngày trả và không nhắc nợ tự động.' }));
@@ -223,15 +239,18 @@
 
   /* ---------- Load ---------- */
   var team = Api.can('task:assign') ? Api.get('/api/team').then(function (t) { return t.items; }) : Promise.resolve([]);
-  Promise.all([Api.get('/api/invoices/open'), Api.get('/api/predictions'), team]).then(function (r) {
+  Promise.all([Api.get('/api/invoices/open'), Api.get('/api/predictions'), Api.get('/api/f3/priority'), team]).then(function (r) {
     var env = r[0];
     state.asOf = env.as_of_date;
-    state.rows = env.items.map(function (i) { return { inv: i, late: fmt.overdueDays(env.as_of_date, i.due_date) }; })
-      .sort(function (a, b) { return b.late - a.late; });
+    r[2].items.forEach(function (item) { state.priority[item.invoice_id] = item; });
+    state.rows = env.items.map(function (i) {
+      return { inv: i, late: fmt.overdueDays(env.as_of_date, i.due_date), priority: state.priority[i.invoice_id] };
+    }).sort(function (a, b) { return a.priority.rank - b.priority.rank; });
     r[1].items.forEach(function (p) { state.preds[p.invoice_id] = p; });
-    state.team = r[2];
+    state.team = r[3];
 
-    sub.textContent = env.items.length + ' hóa đơn còn nợ · Ngày tính toán ' + fmt.dmy(env.as_of_date) +
+    var eligibleCount = state.rows.filter(function (row) { return row.priority.eligible_for_reminder; }).length;
+    sub.textContent = env.items.length + ' hóa đơn còn nợ · ' + eligibleCount + ' đủ điều kiện nhắc · Ngày tính toán ' + fmt.dmy(env.as_of_date) +
       ' · Dự đoán do hệ thống tính từ lịch sử thanh toán của từng khách';
     badge.hidden = false;
     badge.textContent = '';

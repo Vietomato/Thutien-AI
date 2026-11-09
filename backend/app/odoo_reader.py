@@ -30,7 +30,7 @@ ORDER BY pr.max_date, pr.id
 
 # Days between due date and the last payment of each fully paid invoice (negative = paid early).
 _DELAYS_SQL = """
-SELECT COALESCE(p.ref, p.id::text), (max(pr.max_date) - m.invoice_date_due)
+SELECT COALESCE(p.ref, p.id::text), (max(pr.max_date)::date - m.invoice_date_due)
 FROM account_move m
 JOIN res_partner p ON p.id = m.partner_id
 JOIN account_move_line dl ON dl.move_id = m.id
@@ -118,9 +118,14 @@ def payment_history(customer_id: str | None = None) -> list[Payment]:
             for r in rows]
 
 
-def paid_delays() -> list[tuple[str, int]]:
-    """(customer_id, days late) for every fully paid invoice. Input for payment predictions."""
-    return [(r[0], int(r[1])) for r in _query(_DELAYS_SQL)]
+def paid_delays(as_of_date: date | None = None) -> list[tuple[str, int]]:
+    """(customer_id, days late) for fully paid invoices settled by the calculation date."""
+    sql = _DELAYS_SQL
+    params = None
+    if as_of_date is not None:
+        sql += " HAVING max(pr.max_date)::date <= %s"
+        params = [as_of_date]
+    return [(r[0], int(r[1])) for r in _query(sql, params)]
 
 
 def supplier_bills() -> list[tuple[date, int]]:
