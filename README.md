@@ -11,6 +11,16 @@ The system is read-only on Odoo: nothing is ever written to it.
 - Predictions and the 12-week cash forecast are computed from Odoo's real payment history
   (`backend/app/analytics.py`). There is no mock or fixture data at runtime.
 
+## F3 collection priority
+
+`GET /api/f3/priority` is available to accountant and chief-accountant roles. It ranks open invoices by
+`remaining_amount × late_rate × days_overdue`; `late_rate` comes from the customer's fully-paid invoice history,
+then global history, and falls back to an explicitly labeled 0.5 assumption when there is no history. Ties use
+remaining balance and invoice ID. Each row includes the prediction, the rate source, and reminder hold reasons.
+An invoice is eligible for a reminder draft only when it is overdue, has a positive balance and contact email,
+is not disputed, and has no pending draft. This score is a work-queue heuristic, not a claim that an invoice
+will or will not be paid.
+
 ## Roles and permissions
 
 | | Nhân viên kế toán | Kế toán trưởng | Khách hàng | Admin |
@@ -108,7 +118,7 @@ data is known. `test_odoo_integration.py` reads the real Odoo database and is sk
 - `backend/app/auth.py`, `users.py`, `security.py`: login, registration, lockout, password hashing
 - `backend/app/odoo_reader.py`: read-only queries on Odoo
 - `backend/app/analytics.py`: predictions, forecast, summary (pure functions)
-- `backend/app/routes_*.py`: API (data, reminders, tasks, admin)
+- `backend/app/routes_*.py`: API (data, F3 priority, reminders, tasks, admin)
 - `backend/app/schema.sql`, `db.py`, `audit.py`, `drafts.py`, `tasks.py`: application database
 - `backend/tests/`: automated tests
 - `frontend/`: web app in plain HTML/CSS/JS, served at `/app/`

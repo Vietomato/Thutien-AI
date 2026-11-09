@@ -64,7 +64,7 @@ def fake_odoo(monkeypatch):
     monkeypatch.setattr(odoo_reader, "open_invoice",
                         lambda iid: next((i for i in state["invoices"] if i.invoice_id == iid), None))
     monkeypatch.setattr(odoo_reader, "payment_history", lambda customer_id=None: [])
-    monkeypatch.setattr(odoo_reader, "paid_delays", lambda: state["delays"])
+    monkeypatch.setattr(odoo_reader, "paid_delays", lambda as_of_date=None: state["delays"])
     monkeypatch.setattr(odoo_reader, "supplier_bills", lambda: state["bills"])
     monkeypatch.setattr(odoo_reader, "customers", lambda: [
         {"customer_id": "C001", "name": "Khach A"}, {"customer_id": "C002", "name": "Khach B"}])
