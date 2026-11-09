@@ -25,7 +25,7 @@ WEEKS = 12
 
 
 class Obligation(BaseModel):
-    description: str
+    description: str = Field(min_length=1)
     amount: int = Field(gt=0)
     due_date: date
 
