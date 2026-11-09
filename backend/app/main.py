@@ -1,12 +1,14 @@
 import json
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from .config import as_of_date, data_source
 from .contracts import Invoice, Payment
+from app.auth import router as auth_router, require_roles
 from . import odoo_reader
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 app = FastAPI(title="ThuTien AI")
+app.include_router(auth_router)
 
 
 def _fixture(name: str) -> list[dict]:
@@ -22,7 +24,7 @@ def health():
     return {"status": "ok", "data_source": data_source(), "as_of_date": as_of_date().isoformat()}
 
 
-@app.get("/api/invoices/open")
+@app.get("/api/invoices/open", dependencies=[Depends(require_roles("accountant", "manager"))])
 def invoices_open():
     if data_source() == "odoo":
         try:
@@ -34,7 +36,7 @@ def invoices_open():
     return _envelope([i.model_dump(mode="json") for i in items])
 
 
-@app.get("/api/payments/history")
+@app.get("/api/payments/history", dependencies=[Depends(require_roles("accountant", "manager"))])
 def payments_history():
     if data_source() == "odoo":
         try:
