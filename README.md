@@ -81,7 +81,7 @@ confidence interval. Expected outgoings are **typed in by the accountant**, not 
 - `GET /api/f4/forecast?weeks=12`: weekly receipts, outgoings, `gap_p75` and `alerts` (weeks where late-scenario receipts are below outgoings).
 - `POST /api/f4/obligations`, `GET /api/f4/obligations`: enter and list expected outgoings (accountant, manager).
 
-Outgoings are stored in PostgreSQL (`obligations` table, created by `migrations/001_obligations.sql`). Use a PostgreSQL installed on your
+Outgoings are stored in PostgreSQL (`obligations` table, created by `backend/migrations/001_obligations.sql`). Use a PostgreSQL installed on your
 machine (no Docker needed). Create the databases once, as the `postgres` user (adjust the path to your version):
 
     & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h localhost -p 5432 -f scripts/init_app_db.sql
@@ -96,7 +96,7 @@ Then create the tables and load the demo outgoings (both are safe to run again):
     python scripts/migrate.py
     python scripts/seed_obligations.py
 
-`migrate.py` applies each numbered file in `migrations/` once and records it in `schema_migrations`. To change the
+`migrate.py` applies each numbered file in `backend/migrations/` once and records it in `schema_migrations`. To change the
 schema add a new numbered file; do not edit one that is already applied (it is detected and refused).
 `seed_obligations.py` loads about a dozen simulated outgoings, one of them placed in a week where the pessimistic
 scenario collects less, so the shortfall alert shows. Database contents are not stored in git: every machine runs these two commands.

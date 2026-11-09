@@ -1,4 +1,4 @@
-"""Apply database migrations (migrations/*.sql) to the application database.
+"""Apply database migrations (backend/migrations/*.sql) to the application database.
 
     python scripts/migrate.py
 

@@ -1,4 +1,4 @@
-"""Database migrations: numbered SQL files in migrations/, applied once each, in order.
+"""Database migrations: numbered SQL files in backend/migrations/, applied once each, in order.
 
     python scripts/migrate.py
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import db
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 NAME = re.compile(r"^\d{3,}_[a-z0-9_]+\.sql$")
 
 
