@@ -4,3 +4,6 @@ __pycache__/
 *.db
 .pytest_cache/
 *.pyc
+node_modules/
+frontend/dist/
+frontend/.vite/
