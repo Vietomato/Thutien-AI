@@ -3,3 +3,5 @@ uvicorn
 pydantic
 pytest
 httpx2
+psycopg[binary]
+pyjwt
