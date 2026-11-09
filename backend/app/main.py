@@ -1,8 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import db, odoo_reader
 from .auth import router as auth_router
@@ -13,6 +15,7 @@ from .routes_reminders import router as reminders_router
 from .routes_tasks import router as tasks_router
 
 log = logging.getLogger("thutien")
+ROOT = Path(__file__).resolve().parents[2]
 
 
 @asynccontextmanager
@@ -55,3 +58,7 @@ def health():
         app_db = "unavailable"
     return {"status": "ok" if app_db == "ok" else "degraded", "data_source": data_source(),
             "as_of_date": as_of_date().isoformat(), "app_db": app_db}
+
+
+# Web frontend (plain HTML/JS). Mounted last so it never shadows an API route.
+app.mount("/app", StaticFiles(directory=ROOT / "frontend", html=True), name="frontend")
