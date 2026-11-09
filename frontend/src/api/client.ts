@@ -13,7 +13,16 @@ export type PriorityItem = {
   priority_score: number | string
   eligible_for_reminder: boolean
   hold_reasons: string[]
-  prediction: Record<string, unknown> | null
+  prediction: {
+    predicted_date_p25?: string | null
+    predicted_date_p50?: string | null
+    predicted_date_p75?: string | null
+    history_count?: number
+    method?: string
+    low_history?: boolean
+    overdue_adjusted?: boolean
+    label?: string
+  } | null
 }
 
 export type PriorityResponse = {
@@ -56,7 +65,15 @@ export function getPriorityMock(): PriorityResponse {
         priority_score: 160_000_000,
         eligible_for_reminder: true,
         hold_reasons: [],
-        prediction: { method: 'fixture', label: 'DỮ LIỆU MẪU' },
+        prediction: {
+          predicted_date_p25: '2026-11-11',
+          predicted_date_p50: '2026-11-13',
+          predicted_date_p75: '2026-11-17',
+          history_count: 4,
+          method: 'customer_median',
+          low_history: true,
+          label: 'Fixture minh họa',
+        },
       },
       {
         rank: 2,

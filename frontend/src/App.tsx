@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { getPriority, getPriorityMock, type PriorityResponse } from './api/client'
+
+const ForecastChart = lazy(() => import('./components/ForecastChart'))
 
 type Page = 'Đăng nhập' | 'Tổng quan' | 'Ưu tiên thu' | 'Dự báo thu' | 'Nhật ký'
 
@@ -20,6 +22,24 @@ function formatMoney(value: number, currency: string) {
 
 function toNumber(value: number | string) {
   return typeof value === 'number' ? value : Number(value)
+}
+
+function predictionSummary(prediction: PriorityResponse['items'][number]['prediction']) {
+  if (!prediction) return { date: 'Chưa có dự đoán', label: 'Chưa có dữ liệu' }
+  const methodLabels: Record<string, string> = {
+    customer_median: 'Theo lịch sử khách',
+    global_median: 'Theo lịch sử chung',
+    no_history: 'Chưa có lịch sử',
+    fixture: 'Dữ liệu mẫu',
+  }
+  const notes = [
+    prediction.low_history ? 'ít lịch sử' : '',
+    prediction.overdue_adjusted ? 'đã điều chỉnh quá hạn' : '',
+  ].filter(Boolean)
+  return {
+    date: prediction.predicted_date_p50 ?? 'Chưa có ngày dự đoán',
+    label: [prediction.label ?? methodLabels[prediction.method ?? ''] ?? prediction.method ?? 'Chưa rõ phương pháp', ...notes].join(' · '),
+  }
 }
 
 function PriorityPage() {
@@ -72,7 +92,7 @@ function PriorityPage() {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>#</th><th>Khách hàng</th><th>Hóa đơn</th><th>Còn nợ</th><th>Quá hạn</th><th>Tỷ lệ trễ</th><th>Trạng thái</th></tr></thead>
+              <thead><tr><th>#</th><th>Khách hàng</th><th>Hóa đơn</th><th>Còn nợ</th><th>Quá hạn</th><th>Tỷ lệ trễ</th><th>Ngày thu dự kiến</th><th>Trạng thái</th></tr></thead>
               <tbody>{result.items.map((item) => (
                 <tr key={item.invoice_id}>
                   <td className="rank-cell">{item.rank}</td>
@@ -81,6 +101,7 @@ function PriorityPage() {
                   <td>{formatMoney(toNumber(item.remaining_amount), item.currency)}</td>
                   <td>{item.days_overdue} ngày</td>
                   <td>{Math.round(toNumber(item.late_rate) * 100)}%<small>{item.late_rate_source.replaceAll('_', ' ')}</small></td>
+                  <td>{predictionSummary(item.prediction).date}<small>{predictionSummary(item.prediction).label}</small></td>
                   <td>{item.eligible_for_reminder
                     ? <span className="pill ready">Có thể tạo nháp</span>
                     : <span className="pill held">{item.hold_reasons.map((reason) => holdLabels[reason] ?? reason).join(', ')}</span>}</td>
@@ -100,9 +121,19 @@ function PlaceholderPage({ page }: { page: Page }) {
       <p className="eyebrow">THU TIỀN AI · V1</p>
       <h2>{page}</h2>
       <p className="muted">Khung trang đã sẵn sàng. Phần dữ liệu và thao tác sẽ được nối qua API theo contract chung.</p>
+      {page === 'Dự báo thu' && (
+        <Suspense fallback={<p className="state-message">Đang tải biểu đồ mẫu…</p>}>
+          <ForecastChart data={forecastFixture} />
+        </Suspense>
+      )}
     </section>
   )
 }
+
+const forecastFixture = [
+  { week: '09–15/11', receipt_p25: 80_000_000, receipt_p50: 80_000_000, receipt_p75: 0, obligations: 50_000_000 },
+  { week: '16–22/11', receipt_p25: 0, receipt_p50: 0, receipt_p75: 80_000_000, obligations: 0 },
+]
 
 export default function App() {
   const [page, setPage] = useState<Page>('Ưu tiên thu')
