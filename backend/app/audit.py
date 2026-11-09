@@ -1,59 +1,41 @@
-import json
-import os
-import sqlite3
-from datetime import datetime, timezone
+"""Append-only audit log in the app database. There is no update or delete (a DB trigger enforces it)."""
+from psycopg.types.json import Jsonb
 
-SENSITIVE_KEYS = {"password", "token", "secret", "authorization", "api_key"}
+from .db import connect
 
-
-def _db_path() -> str:
-    return os.getenv("AUDIT_DB_PATH", "thutien.db")
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(_db_path())
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts TEXT NOT NULL,
-            actor TEXT NOT NULL,
-            action TEXT NOT NULL,
-            target TEXT NOT NULL,
-            detail TEXT
-        )
-        """
-    )
-    return conn
+SENSITIVE_KEYS = {"password", "new_password", "old_password", "token", "secret", "authorization", "api_key"}
 
 
 def _clean(detail: dict | None) -> dict:
     if not detail:
         return {}
-    return {
-        k: ("***" if k.lower() in SENSITIVE_KEYS else v)
-        for k, v in detail.items()
-    }
+    return {k: ("***" if k.lower() in SENSITIVE_KEYS else v) for k, v in detail.items()}
 
 
 def append_audit(actor: str, action: str, target: str, detail: dict | None = None) -> int:
-    """Append one audit record. Returns its id. There is no update or delete."""
-    ts = datetime.now(timezone.utc).isoformat()
-    with _connect() as conn:
-        cur = conn.execute(
-            "INSERT INTO audit_log (ts, actor, action, target, detail) VALUES (?, ?, ?, ?, ?)",
-            (ts, actor, action, target, json.dumps(_clean(detail), ensure_ascii=False)),
-        )
-        return cur.lastrowid
+    """Append one audit record and return its id."""
+    with connect() as conn:
+        row = conn.execute(
+            "INSERT INTO audit_log (actor, action, target, detail) VALUES (%s, %s, %s, %s) RETURNING id",
+            (actor, action, target, Jsonb(_clean(detail))),
+        ).fetchone()
+        return row["id"]
 
 
-def list_audit(limit: int = 100) -> list[dict]:
-    with _connect() as conn:
-        rows = conn.execute(
-            "SELECT id, ts, actor, action, target, detail FROM audit_log ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-    return [
-        {"id": r[0], "ts": r[1], "actor": r[2], "action": r[3], "target": r[4], "detail": json.loads(r[5] or "{}")}
-        for r in rows
-    ]
+def list_audit(limit: int = 100, actor: str | None = None, action: str | None = None) -> list[dict]:
+    limit = max(1, min(int(limit), 500))
+    where, params = [], []
+    if actor:
+        where.append("actor = %s")
+        params.append(actor)
+    if action:
+        where.append("action = %s")
+        params.append(action)
+    sql = "SELECT id, ts, actor, action, target, detail FROM audit_log"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id DESC LIMIT %s"
+    params.append(limit)
+    with connect() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [{**r, "ts": r["ts"].isoformat()} for r in rows]

@@ -1,48 +1,51 @@
-import json
-from pathlib import Path
-from fastapi import FastAPI, HTTPException, Depends
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from . import db, odoo_reader
+from .auth import router as auth_router
 from .config import as_of_date, data_source
-from .contracts import Invoice, Payment
-from app.auth import router as auth_router, require_roles
-from . import odoo_reader
+from .routes_admin import router as admin_router
 
-FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
-app = FastAPI(title="ThuTien AI")
+log = logging.getLogger("thutien")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    try:
+        db.init_schema()
+    except db.AppDbUnavailable as e:
+        # Keep the server up so /health explains the problem; data endpoints answer 503 until the DB is back.
+        log.error("app database not ready: %s", e)
+    yield
+
+
+app = FastAPI(title="ThuTien AI", lifespan=lifespan)
 app.include_router(auth_router)
+app.include_router(admin_router)
 
 
-def _fixture(name: str) -> list[dict]:
-    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+@app.exception_handler(odoo_reader.OdooUnavailable)
+async def _odoo_down(_: Request, exc: odoo_reader.OdooUnavailable):
+    log.error("%s", exc)
+    return JSONResponse({"detail": "Odoo database unavailable"}, status_code=502)
 
 
-def _envelope(items):
-    return {"source": data_source(), "as_of_date": as_of_date().isoformat(), "items": items}
+@app.exception_handler(db.AppDbUnavailable)
+async def _app_db_down(_: Request, exc: db.AppDbUnavailable):
+    log.error("%s", exc)
+    return JSONResponse({"detail": "application database unavailable"}, status_code=503)
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "data_source": data_source(), "as_of_date": as_of_date().isoformat()}
-
-
-@app.get("/api/invoices/open", dependencies=[Depends(require_roles("accountant", "manager"))])
-def invoices_open():
-    if data_source() == "odoo":
-        try:
-            items = odoo_reader.open_invoices()
-        except odoo_reader.OdooUnavailable as e:
-            raise HTTPException(502, str(e))
-    else:
-        items = [Invoice(**x) for x in _fixture("invoices.json") if x["remaining_amount"] > 0]
-    return _envelope([i.model_dump(mode="json") for i in items])
-
-
-@app.get("/api/payments/history", dependencies=[Depends(require_roles("accountant", "manager"))])
-def payments_history():
-    if data_source() == "odoo":
-        try:
-            items = odoo_reader.payment_history()
-        except odoo_reader.OdooUnavailable as e:
-            raise HTTPException(502, str(e))
-    else:
-        items = [Payment(**x) for x in _fixture("payments.json")]
-    return _envelope([p.model_dump(mode="json") for p in items])
+    try:
+        with db.connect() as conn:
+            conn.execute("SELECT 1")
+        app_db = "ok"
+    except db.AppDbUnavailable:
+        app_db = "unavailable"
+    return {"status": "ok" if app_db == "ok" else "degraded", "data_source": data_source(),
+            "as_of_date": as_of_date().isoformat(), "app_db": app_db}
