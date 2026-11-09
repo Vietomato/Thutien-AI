@@ -10,7 +10,7 @@ from .audit import append_audit
 from .auth import require_roles
 from .config import as_of_date, data_source
 from .forecast import Obligation
-from .obligations import ObligationRecord, PostgresObligations
+from .obligations import PostgresObligations
 from .sources import load_invoices_and_payments
 
 router = APIRouter(prefix="/api/f4")
