@@ -55,6 +55,21 @@ def open_invoices() -> list[Invoice]:
         ]
 
 
+ALL_INVOICES_SQL = INVOICES_SQL.replace("  AND m.amount_residual > 0\n", "")
+
+
+def all_invoices() -> list[Invoice]:
+    """Open and fully paid invoices. Prediction history needs the paid ones (due date, amount)."""
+    with _connect() as conn, conn.cursor() as cur:
+        cur.execute(ALL_INVOICES_SQL)
+        return [
+            Invoice(invoice_id=r[0], customer_id=r[1], display_name=r[2], due_date=r[3],
+                    invoice_amount=r[4], remaining_amount=r[5],
+                    dispute_status="disputed" if r[6] else "none", contact_email=r[7])
+            for r in cur.fetchall()
+        ]
+
+
 def payment_history() -> list[Payment]:
     with _connect() as conn, conn.cursor() as cur:
         cur.execute(PAYMENTS_SQL)

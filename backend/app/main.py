@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from .config import as_of_date, data_source
 from .contracts import Invoice, Payment
 from app.auth import router as auth_router, require_roles
-from . import odoo_reader
+from . import odoo_reader, prediction
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 app = FastAPI(title="ThuTien AI")
@@ -34,6 +34,22 @@ def invoices_open():
     else:
         items = [Invoice(**x) for x in _fixture("invoices.json") if x["remaining_amount"] > 0]
     return _envelope([i.model_dump(mode="json") for i in items])
+
+
+@app.get("/api/predictions", dependencies=[Depends(require_roles("accountant", "manager"))])
+def predictions():
+    """Predicted payment dates (P25/P50/P75) for every open invoice. Computed by app.prediction."""
+    if data_source() == "odoo":
+        try:
+            invoices, payments = odoo_reader.all_invoices(), odoo_reader.payment_history()
+        except odoo_reader.OdooUnavailable as e:
+            raise HTTPException(502, str(e))
+    else:
+        invoices = [Invoice(**x) for x in _fixture("invoices.json")]
+        payments = [Payment(**x) for x in _fixture("payments.json")]
+    open_invoices = [i for i in invoices if i.remaining_amount > 0]
+    items = prediction.predict(open_invoices, invoices, payments, as_of_date())
+    return _envelope([p.model_dump(mode="json") for p in items])
 
 
 @app.get("/api/payments/history", dependencies=[Depends(require_roles("accountant", "manager"))])
