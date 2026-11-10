@@ -17,7 +17,7 @@ export function ForecastChart({ forecast }: { forecast?: Row }) {
       <span className="wk-date">{date(w.week_start).slice(0, 5)}</span><span className="wk-gap">{w.gap_p75 > 0 ? "!" : ""}</span>
     </div>)}</div></div>
     {!weeks.length && <div className="empty">Chưa có dữ liệu dự báo từ API.</div>}
-    <div className="chart-note"><span className="note">Nguồn thu và nghĩa vụ: hóa đơn Odoo; các phân vị do backend tính.</span><span className="note">P25 = thu sớm, P50 = trung vị, P75 = thu muộn.</span></div>
+    <div className="chart-note"><span className="note">Thu: hóa đơn Odoo. Chi: hóa đơn nhà cung cấp Odoo cộng khoản kế toán nhập tay. Các phân vị do backend tính.</span><span className="note">P25 = thu sớm, P50 = trung vị, P75 = thu muộn.</span></div>
   </article>;
 }
 
@@ -67,6 +67,47 @@ export function Invoices({ data, isStaff, canDraft, canAssign, onDrafts, onTasks
   </>;
 }
 
-export function ForecastPage({ forecast }: { forecast?: Row }) {
-  return <><Head title="Dự báo dòng tiền · F4" subtitle="Phân vị ngày trả được tính từ lịch sử thanh toán; nghĩa vụ đọc từ hóa đơn nhà cung cấp Odoo." right={<span className="pill pill-success"><span className="pill-dot" />Nguồn: Odoo (chỉ đọc)</span>} /><ForecastChart forecast={forecast} /><div className="table-card table-scroll"><table className="table"><thead><tr><th>Tuần</th><th className="num">P25</th><th className="num">P50</th><th className="num">P75</th><th className="num">Nghĩa vụ</th><th className="num">Thiếu theo P75</th></tr></thead><tbody>{(forecast?.weeks ?? []).map((w: Row) => <tr key={w.week_start}><td>{date(w.week_start)}</td><td className="num">{money(w.receipt_p25)}</td><td className="num">{money(w.receipt_p50)}</td><td className="num">{money(w.receipt_p75)}</td><td className="num">{money(w.obligations)}</td><td className="num">{money(w.gap_p75)}</td></tr>)}</tbody></table></div></>;
+export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast?: Row; obligations?: Row; canEdit: boolean; act: Action }) {
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const alerts: Row[] = forecast?.alerts ?? [];
+  const items: Row[] = obligations?.items ?? [];
+  const sources: Row = forecast?.obligations_sources ?? {};
+  const beyond: Row = forecast?.receipts_out_of_horizon ?? {};
+  const hasBeyond = Number(beyond.p25 ?? 0) + Number(beyond.p50 ?? 0) + Number(beyond.p75 ?? 0) > 0 || Number(forecast?.obligations_out_of_horizon ?? 0) > 0;
+  const amountValue = Number(amount);
+  const valid = description.trim().length > 0 && Number.isInteger(amountValue) && amountValue > 0 && dueDate !== "";
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!valid) return;
+    const ok = await act(() => api("/api/obligations", jsonBody({ description: description.trim(), amount: amountValue, due_date: dueDate })), "Đã lưu khoản chi dự kiến.");
+    if (ok) { setDescription(""); setAmount(""); setDueDate(""); }
+  };
+  return <>
+    <Head title="Dự báo dòng tiền · F4" subtitle="Phân vị ngày trả được tính từ lịch sử thanh toán. Chi gồm hóa đơn nhà cung cấp trong Odoo và khoản kế toán nhập tay." right={<span className="pill pill-success"><span className="pill-dot" />Thu: Odoo (chỉ đọc)</span>} />
+    <div className="alert alert-warning" role="note"><div><div className="alert-title">Cần biết khi đọc số liệu</div>Ba đường là kịch bản thử sức chịu đựng (tiền về sớm, giữa, muộn), không phải khoảng tin cậy thống kê và không phản ánh số dư tiền mặt. Chi có hai nguồn: hóa đơn nhà cung cấp trong Odoo ({money(sources.odoo_supplier_bills)}) và khoản chi kế toán nhập tay ({money(sources.manual)}, {sources.manual_count ?? 0} khoản).</div></div>
+    <ForecastChart forecast={forecast} />
+    <section className="panel">
+      <div className="panel-head"><h2>Cảnh báo thu thiếu</h2><span className="note">Tuần mà thu ở kịch bản bi quan (P75) thấp hơn chi</span></div>
+      {alerts.length === 0 ? <div className="empty">Không có tuần nào thu thấp hơn chi ở kịch bản bi quan.</div>
+        : <div className="table-scroll"><table className="table"><thead><tr><th>Tuần bắt đầu</th><th className="num">Thu bi quan (P75)</th><th className="num">Chi</th><th className="num">Thiếu</th></tr></thead>
+          <tbody>{alerts.map(a => <tr key={a.week_start}><td>{date(a.week_start)}</td><td className="num">{money(a.receipt_p75)}</td><td className="num">{money(a.obligations)}</td><td className="num">{money(a.gap_p75)}</td></tr>)}</tbody></table></div>}
+    </section>
+    {hasBeyond && <div className="chart-note"><span className="note">Ngoài 12 tuần: thu P25 {money(beyond.p25)}, P50 {money(beyond.p50)}, P75 {money(beyond.p75)}; chi {money(forecast?.obligations_out_of_horizon)}. Các khoản này không nằm trong biểu đồ.</span></div>}
+    {canEdit && <form className="card" onSubmit={submit}><h2>Nhập khoản chi dự kiến</h2>
+      <div className="form-grid">
+        <div className="field"><label htmlFor="ob-description">Nội dung</label><input id="ob-description" className="input" value={description} onChange={e => setDescription(e.target.value)} maxLength={200} placeholder="Ví dụ: Tiền thuê văn phòng" required /></div>
+        <div className="field"><label htmlFor="ob-amount">Số tiền (VND)</label><input id="ob-amount" className="input" type="number" min={1} step={1} inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)} placeholder="30000000" required /></div>
+        <div className="field"><label htmlFor="ob-date">Ngày chi</label><input id="ob-date" className="input" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required /></div>
+      </div>
+      <div><button className="btn" style={{ padding: "0 18px" }} disabled={!valid}>Thêm khoản chi</button></div></form>}
+    <section className="panel">
+      <div className="panel-head"><h2>Khoản chi kế toán đã nhập</h2><span className="note">Nhập tay, chưa đọc từ Odoo</span></div>
+      {items.length === 0 ? <div className="empty">Chưa có khoản chi nhập tay nào.</div>
+        : <div className="table-scroll"><table className="table"><thead><tr><th>Ngày chi</th><th>Nội dung</th><th className="num">Số tiền</th><th>Người nhập</th></tr></thead>
+          <tbody>{items.map(o => <tr key={o.id}><td>{date(o.due_date)}</td><td>{o.description}</td><td className="num">{money(o.amount)}</td><td>{o.created_by_username}</td></tr>)}</tbody></table></div>}
+    </section>
+    <div className="table-card table-scroll"><table className="table"><thead><tr><th>Tuần</th><th className="num">P25</th><th className="num">P50</th><th className="num">P75</th><th className="num">Chi</th><th className="num">Thiếu theo P75</th></tr></thead><tbody>{(forecast?.weeks ?? []).map((w: Row) => <tr key={w.week_start}><td>{date(w.week_start)}</td><td className="num">{money(w.receipt_p25)}</td><td className="num">{money(w.receipt_p50)}</td><td className="num">{money(w.receipt_p75)}</td><td className="num">{money(w.obligations)}</td><td className="num">{money(w.gap_p75)}</td></tr>)}</tbody></table></div>
+  </>;
 }
