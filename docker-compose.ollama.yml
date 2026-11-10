@@ -1,0 +1,11 @@
+# Optional local LLM for T18. Use together with docker-compose.yml.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "127.0.0.1:11435:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+
+volumes:
+  ollama-models:

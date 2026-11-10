@@ -28,19 +28,21 @@ invoice, amount, date, or email data to the model. The backend inserts those fac
 model output, and saves the draft in the application database. The UI labels the source as Ollama or a
 template fallback. A draft is never sent automatically and still requires accountant review.
 
-On Windows, install Ollama from https://ollama.com/download, then run:
+After Docker Desktop, Python and Node.js are installed and Odoo is initialized as described below, run one
+PowerShell command from the repository root:
 
-    ollama pull qwen3:4b
+    .\scripts\run_t18_demo.ps1
 
-In the same PowerShell terminal used to start the backend, set:
+The script starts PostgreSQL, Odoo and Ollama with Docker, creates the application DB roles and demo users
+if missing, downloads `qwen3:4b` once into a persistent Docker volume, installs app dependencies, builds
+the frontend, checks both databases and starts FastAPI at http://127.0.0.1:8001/app/. It creates a local
+ignored `.env` with the development database passwords from the SQL setup scripts and a random JWT secret.
+If your database passwords differ, edit `.env` before running the script again. No separate Ollama
+installation or API key is needed. Odoo's first database and Invoicing app still need to be created in its UI.
 
-    $env:OLLAMA_ENABLED="1"
-    $env:OLLAMA_MODEL="qwen3:4b"
-    $env:OLLAMA_URL="http://127.0.0.1:11434"
-
-Restart the backend, sign in as an accountant, and create a reminder draft for an overdue invoice. If Ollama
-is unavailable, times out, or returns invalid text, the backend uses and labels the fixed template instead.
-The optional `OLLAMA_TIMEOUT_SECONDS` defaults to 30. No API key is needed for a local model.
+Sign in as an accountant and create a reminder draft for an overdue invoice. If Ollama is unavailable, times
+out, or returns invalid text, the backend uses and labels the fixed template instead. The optional
+`OLLAMA_TIMEOUT_SECONDS` defaults to 30 without the script; the script sets it to 60 for CPU demos.
 
 ## Roles and permissions
 
