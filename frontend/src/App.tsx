@@ -1,128 +1,156 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, jsonBody, tokenStore } from "@/lib/api";
+import { ForecastPage, Invoices, Overview } from "@/FinancePages";
+import { AdminUsers, Audit, Customers, Reminders, Tasks } from "@/Operations";
+import { Action, errorMessage, roleName, Row } from "@/ui";
 
-type Obj = Record<string, any>;
-const money = (n = 0) => new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(Number(n)) + " ₫";
-const points = (n = 0) => new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(Number(n)) + " điểm";
-const date = (s?: string) => s ? new Intl.DateTimeFormat("vi-VN").format(new Date(`${s.slice(0,10)}T00:00:00`)) : "—";
-const serverMsg = (e: unknown) => e instanceof Error ? e.message : "Có lỗi xảy ra";
-const statusText = (s: string) => ({ pending:"Chờ duyệt", approved:"Đã duyệt", rejected:"Đã từ chối" }[s] ?? s);
-const roleText = (s: string) => ({ accountant:"Kế toán viên", chief_accountant:"Kế toán trưởng", customer:"Khách hàng", admin:"Quản trị viên" }[s] ?? s);
-const short = (s: string) => (s ?? "").replaceAll("₫", "đ");
-const homePage = (profile: Obj) => {
-  const permissions = new Set<string>(profile.permissions ?? []);
-  if (permissions.has("summary:read_all") || permissions.has("summary:read_own")) return "overview";
-  if (permissions.has("user:manage")) return "users";
-  return "invoices";
-};
+type Page = "overview" | "invoices" | "forecast" | "drafts" | "tasks" | "payments" | "users" | "audit";
+type Profile = Row & { username: string; full_name: string; role: string; permissions: string[] };
+
+function initialPage(profile: Profile): Page {
+  const requested = window.location.hash.slice(1) as Page;
+  const required: Partial<Record<Page, string[]>> = {
+    overview: ["summary:read_all", "summary:read_own"], invoices: ["invoice:read_all", "invoice:read_own"],
+    forecast: ["forecast:read"], drafts: ["draft:read_own", "draft:read_team"],
+    tasks: ["task:read_own", "task:read_team"], payments: ["payment:read_own"],
+    users: ["user:manage"], audit: ["audit:read"],
+  };
+  if (required[requested]?.some(permission => profile.permissions.includes(permission))) return requested;
+  return profile.permissions.includes("user:manage") ? "users" : "overview";
+}
+
+const demoAccounts = [
+  ["accountant1", "Nhân viên kế toán"], ["chief1", "Kế toán trưởng"],
+  ["customer1", "Khách hàng"], ["admin1", "Quản trị viên"],
+] as const;
 
 export default function App() {
-  const [me, setMe] = useState<Obj|null>(null);
-  const [page, setPage] = useState("overview");
+  const [me, setMe] = useState<Profile | null>(null);
+  const [restoring, setRestoring] = useState(Boolean(tokenStore.get()));
+  const [page, setPage] = useState<Page>("overview");
+  const [data, setData] = useState<Row>({});
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [dataError, setDataError] = useState("");
   const [toast, setToast] = useState("");
+  const [authTab, setAuthTab] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("accountant1");
   const [password, setPassword] = useState("");
-  const [data, setData] = useState<Obj>({});
-  const notify = (s: string) => { setToast(s); window.setTimeout(() => setToast(""), 3500); };
-  const load = useCallback(async (profile = me) => {
-    if (!profile) return;
-    setBusy(true); setError("");
-    const perms = new Set<string>(profile.permissions ?? []);
-    const jobs: Record<string, Promise<any>> = {};
-    if (perms.has("summary:read_all") || perms.has("summary:read_own")) jobs.summary = api("/api/summary");
-    if (perms.has("invoice:read_all") || perms.has("invoice:read_own")) jobs.invoices = api("/api/invoices/open");
-    if (perms.has("invoice:read_all")) jobs.priority = api("/api/f3/priority");
-    if (perms.has("forecast:read")) jobs.forecast = api("/api/forecast");
-    if (perms.has("draft:create")) jobs.candidates = api("/api/reminders/candidates");
-    if (perms.has("draft:read_own") || perms.has("draft:read_team")) jobs.drafts = api("/api/reminders/drafts");
-    if (perms.has("task:read_own") || perms.has("task:read_team")) jobs.tasks = api(`/api/tasks?scope=${perms.has("task:read_team") ? "team" : "mine"}`);
-    if (perms.has("task:read_team")) jobs.team = api("/api/team");
-    if (perms.has("user:manage")) { jobs.users = api("/api/admin/users"); jobs.customers = api("/api/admin/customers"); }
-    if (perms.has("audit:read")) jobs.audit = api("/api/admin/audit?limit=100");
-    const entries = await Promise.all(Object.entries(jobs).map(async ([key,p]) => [key, await p.then(v=>({value:v}),e=>({error:e}))] as const));
-    const next: Obj = {};
-    const failed: string[] = [];
-    for (const [key,result] of entries) {
-      if ("value" in result) next[key] = result.value;
-      else if (result.error instanceof ApiError && result.error.status === 401) { tokenStore.clear(); setMe(null); setData({}); setError("Phiên đăng nhập hết hạn, vui lòng đăng nhập lại."); setBusy(false); return; }
-      else { failed.push(key); console.warn(`API ${key}:`, result.error); }
-    }
-    setData(next); setError(failed.length ? `Không tải được một số dữ liệu (${failed.join(", ")}). Kiểm tra API/Odoo rồi bấm tải lại.` : ""); setBusy(false);
-  }, [me]);
-  useEffect(() => { if (me) void load(me); }, [me, load]);
-  useEffect(() => {
-    const token = tokenStore.get(); if (!token) return;
-    api<Obj>("/api/auth/me").then(profile => { setMe(profile); setPage(homePage(profile)); }).catch(() => tokenStore.clear());
-  }, []);
-  const perms = useMemo(() => new Set<string>(me?.permissions ?? []), [me]);
-  const canSee = (p: string) => perms.has(p);
-  const refresh = async () => { await load(me); };
-  const act = async (fn: () => Promise<unknown>, success: string) => {
-    setBusy(true); setError("");
-    try { await fn(); notify(success); await load(me); }
-    catch(e) { setError(serverMsg(e)); }
-    finally { setBusy(false); }
-  };
-  const login = async (e: React.FormEvent) => {
-    e.preventDefault(); setBusy(true); setError("");
-    try {
-      const result = await api<Obj>("/api/auth/login", jsonBody({ username, password }), true);
-      tokenStore.set(result.access_token); setMe(result);
-      setPage(homePage(result));
-    } catch(e) { setError(serverMsg(e)); }
-    finally { setBusy(false); }
-  };
-  const logout = async () => { try { await api("/api/auth/logout", jsonBody({})); } catch {} tokenStore.clear(); setMe(null); setData({}); };
-  if (!me) return <main className="login-wrap">
-    <form className="login-card" onSubmit={login}>
-      <div className="brand-mark">✓</div>
-      <p className="eyebrow">THUTIEN AI · DEMO ODOO</p>
-      <h1>Đăng nhập</h1>
-      <p className="muted">Chọn vai trò demo hoặc nhập tên tài khoản của bạn.</p>
-      <div className="role-picker" aria-label="Tài khoản demo">
-        {([
-          ["accountant1", "Kế toán viên"], ["chief1", "Kế toán trưởng"],
-          ["customer1", "Khách hàng"], ["admin1", "Quản trị"],
-        ] as const).map(([name, label]) =>
-          <button key={name} type="button" className={username === name ? "role-choice selected" : "role-choice"} onClick={() => setUsername(name)}>{label}</button>
-        )}
-      </div>
-      <label>Tên đăng nhập<input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" /></label>
-      <label>Mật khẩu<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" /></label>
-      {error && <div className="alert error">{error}</div>}
-      <button className="primary full" disabled={busy}>{busy ? "Đang đăng nhập…" : "Đăng nhập"}</button>
-      <p className="hint">Mật khẩu tài khoản demo đã seed: demo12345.</p>
-    </form>
-  </main>;
-  const nav = [
-    ["overview","Tổng quan", "summary:read_all"], ["invoices","Công nợ F3", "invoice:read_all"],
-    ["forecast","Dự báo F4", "forecast:read"], ["drafts","Nhắc nợ & duyệt", "draft:read_own"],
-    ["tasks","Nhiệm vụ", "task:read_own"], ["users","Người dùng", "user:manage"], ["audit","Nhật ký", "audit:read"],
-  ].filter(([id, , p]) => canSee(p as string) || (id === "overview" && canSee("summary:read_own")) || (id === "invoices" && canSee("invoice:read_own")) || (p === "draft:read_own" && canSee("draft:read_team")) || (p === "task:read_own" && canSee("task:read_team")));
-  const title = ({overview:"Tổng quan",invoices:"Ưu tiên thu nợ · F3",forecast:"Dự báo dòng tiền · F4",drafts:"Nhắc nợ & phê duyệt",tasks:"Nhiệm vụ",users:"Quản lý người dùng",audit:"Nhật ký kiểm toán"} as Obj)[page] ?? "ThuTien AI";
-  const items: Obj[] = data.priority?.items ?? data.invoices?.items ?? [];
-  const createDraft = (invoiceId:string) => act(() => api("/api/reminders/drafts",jsonBody({invoice_id:invoiceId})), "Đã tạo nháp từ dữ liệu Odoo; chưa gửi email.");
-  return <div className="app-shell"><aside className="sidebar"><div className="logo"><span className="brand-mark">✓</span><span>ThuTien AI</span></div><div className="nav-label">WORKSPACE</div><nav>{nav.map(([id,label])=><button key={id} className={page===id?"nav-item active":"nav-item"} onClick={()=>setPage(id as string)}><span className="nav-dot"/>{label}</button>)}</nav><div className="side-bottom"><div className="avatar">{(me.full_name??me.username).slice(0,1).toUpperCase()}</div><div className="who"><b>{me.full_name}</b><small>{roleText(me.role)}</small></div><button className="logout" onClick={logout}>Đăng xuất</button></div></aside>
-  <main className="main"><header className="topbar"><div><div className="eyebrow">THUTIEN AI / WORKSPACE</div><h1>{title}</h1></div><div className="top-actions"><span className="source-pill"><i/> Odoo · chỉ đọc</span><button className="icon-btn" onClick={()=>void refresh()} title="Tải lại">↻</button><button className="switch-account" onClick={logout} title="Đăng xuất để đổi vai trò" aria-label="Đổi tài khoản">Đổi tài khoản</button><span className="avatar small">{(me.full_name??me.username).slice(0,1).toUpperCase()}</span></div></header>
-  <section className="content">{error&&<div className="alert error">{error}<button onClick={()=>setError("")}>×</button></div>}{busy&&<div className="loading-line">Đang đồng bộ dữ liệu…</div>}
-  {page==="overview"&&<><div className="hero"><div><div className="eyebrow">BẢNG ĐIỀU KHIỂN</div><h2>Chào {me.full_name?.split(" ").slice(-1)[0] ?? me.username}</h2><p>Dữ liệu công nợ được đọc trực tiếp từ Odoo. Mọi nháp cần người có thẩm quyền duyệt.</p></div><span className="hero-icon">↗</span></div><div className="kpis">{[["Còn phải thu",money(data.summary?.total_remaining),"tổng số dư mở"],["Hóa đơn mở",data.summary?.open_count??items.length,"hóa đơn"],["Đã quá hạn",money(data.summary?.overdue_amount),`${data.summary?.overdue_count??0} hóa đơn`],["Tranh chấp",money(data.summary?.disputed_amount),`${data.summary?.disputed_count??0} hóa đơn`]].map(([a,b,c])=><div className="kpi" key={a as string}><span>{a}</span><strong>{b}</strong><small>{c}</small></div>)}</div><InvoicesTable items={(data.priority?.items??data.invoices?.items??[]).slice(0,5)} createDraft={createDraft} onSelect={()=>setPage("invoices")} canDraft={canSee("draft:create")} /></>}
-  {page==="invoices"&&<><div className="section-heading"><div><h2>Danh sách ưu tiên F3</h2><p>Xếp hạng theo số dư còn nợ, tỷ lệ trả trễ và số ngày quá hạn.</p></div><span className="source-pill"><i/> {data.priority?.source??data.invoices?.source??"Đang tải"} · {date(data.priority?.as_of_date??data.invoices?.as_of_date)}</span></div><InvoicesTable items={items} createDraft={createDraft} onSelect={()=>{}} canDraft={canSee("draft:create")} /></>}
-  {page==="forecast"&&<Forecast data={data.forecast}/ >}
-  {page==="drafts"&&<Drafts data={data} canCreate={canSee("draft:create")} canDecide={canSee("draft:decide")} act={act} />}
-  {page==="tasks"&&<Tasks data={data} canAssign={canSee("task:assign")} act={act} />}
-  {page==="users"&&<Users data={data} act={act} />}
-  {page==="audit"&&<Audit items={data.audit?.items??[]} />}
-  </section></main>{toast&&<div className="toast">✓ {toast}</div>}</div>;
-}
+  const [fullName, setFullName] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const requestId = useRef(0);
 
-function InvoicesTable({items,createDraft,onSelect,canDraft}:{items:Obj[];createDraft:(id:string)=>void;onSelect:()=>void;canDraft:boolean}) {
- const [query,setQuery]=useState(""); const rows=items.filter(i=>`${i.invoice_id} ${i.display_name} ${i.customer_id}`.toLowerCase().includes(query.toLowerCase()));
- return <div className="panel"><div className="table-tools"><input placeholder="Tìm hóa đơn hoặc khách hàng…" value={query} onChange={e=>setQuery(e.target.value)}/><span className="muted">{rows.length} hóa đơn</span></div><div className="table-scroll"><table><thead><tr><th>ƯU TIÊN</th><th>HÓA ĐƠN</th><th>KHÁCH HÀNG</th><th>HẠN TRẢ</th><th>CÒN NỢ</th><th>DỰ ĐOÁN P50</th><th>TRẠNG THÁI</th><th>NHẮC NỢ</th></tr></thead><tbody>{rows.map((i,n)=>{const hold=i.hold_reasons??[];return <tr key={i.invoice_id} onClick={onSelect}><td><b className="rank">#{i.rank??n+1}</b><small>{points(i.priority_score)} điểm</small></td><td><b>{i.invoice_id}</b><small>{money(i.invoice_amount)} tổng</small></td><td>{i.display_name}<small>{i.customer_id}</small></td><td>{date(i.due_date)}<small>{i.days_overdue>0?`Quá hạn ${i.days_overdue} ngày`:"Chưa đến hạn"}</small></td><td className="amount">{money(i.remaining_amount)}</td><td>{i.prediction?.predicted_date_p50?date(i.prediction.predicted_date_p50):"—"}<small>{i.late_rate_source??""}</small></td><td><span className={`badge ${i.dispute_status==="disputed"?"amber":i.days_overdue>0?"red":"blue"}`}>{i.dispute_status==="disputed"?"Tranh chấp":i.days_overdue>0?"Quá hạn":"Chưa đến hạn"}</span></td><td>{hold.length?<span className="badge amber">{hold.join(", ")}</span>:i.eligible_for_reminder?<button className="secondary small-btn" disabled={!canDraft} onClick={e=>{e.stopPropagation();createDraft(i.invoice_id)}}>Tạo nháp</button>:<span className="muted">Chưa đủ điều kiện</span>}</td></tr>})}{!rows.length&&<tr><td colSpan={8} className="empty">Chưa có hóa đơn để hiển thị. Kiểm tra kết nối Odoo và quyền tài khoản.</td></tr>}</tbody></table></div></div>
+  const notify = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3600);
+  };
+
+  const load = useCallback(async (profile: Profile) => {
+    const current = ++requestId.current;
+    setBusy(true);
+    setDataError("");
+    const p = new Set(profile.permissions);
+    const jobs: Record<string, Promise<Row>> = {};
+    if (p.has("summary:read_all") || p.has("summary:read_own")) jobs.summary = api("/api/summary");
+    if (p.has("invoice:read_all") || p.has("invoice:read_own")) jobs.invoices = api("/api/invoices/open");
+    if (p.has("payment:read_own")) jobs.payments = api("/api/payments/history");
+    if (p.has("invoice:read_all")) jobs.priority = api("/api/f3/priority");
+    if (p.has("forecast:read")) jobs.forecast = api("/api/forecast");
+    if (p.has("draft:create")) jobs.candidates = api("/api/reminders/candidates");
+    if (p.has("draft:read_own") || p.has("draft:read_team")) jobs.drafts = api("/api/reminders/drafts");
+    if (p.has("task:read_own") || p.has("task:read_team")) jobs.tasks = api(`/api/tasks?scope=${p.has("task:read_team") ? "team" : "mine"}`);
+    if (p.has("task:read_team")) jobs.team = api("/api/team");
+    if (p.has("user:manage")) { jobs.users = api("/api/admin/users"); jobs.customers = api("/api/admin/customers"); }
+    if (p.has("audit:read")) jobs.audit = api("/api/admin/audit?limit=100");
+    const results = await Promise.all(Object.entries(jobs).map(async ([name, task]) => ({ name, result: await task.then(value => ({ value }), error => ({ error })) })));
+    if (current !== requestId.current) return;
+    const next: Row = {};
+    const failed: string[] = [];
+    for (const { name, result } of results) {
+      if ("value" in result) next[name] = result.value;
+      else if (result.error instanceof ApiError && result.error.status === 401) {
+        tokenStore.clear(); setMe(null); setData({}); setBusy(false);
+        setAuthError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        return;
+      } else { failed.push(name); console.warn(`API ${name}`, result.error); }
+    }
+    setData(next);
+    setDataError(failed.length ? `Không tải được: ${failed.join(", ")}. Kiểm tra /health, Odoo và PostgreSQL rồi tải lại.` : "");
+    setBusy(false);
+  }, []);
+
+  useEffect(() => {
+    if (!tokenStore.get()) { setRestoring(false); return; }
+    api<Profile>("/api/auth/me").then(profile => { setMe(profile); setPage(initialPage(profile)); void load(profile); }).catch(() => {
+      tokenStore.clear(); setAuthError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+    }).finally(() => setRestoring(false));
+  }, [load]);
+
+  const perms = useMemo(() => new Set(me?.permissions ?? []), [me]);
+  const can = (permission: string) => perms.has(permission);
+  const navigate = (to: string) => { window.location.hash = to; setPage(to as Page); setDataError(""); };
+  const refresh = () => { if (me) void load(me); };
+
+  const act: Action = async (job, message) => {
+    if (!me) return false;
+    setBusy(true); setDataError("");
+    try { await job(); notify(message); await load(me); return true; }
+    catch (error) { setDataError(errorMessage(error)); setBusy(false); return false; }
+  };
+
+  async function submitAuth(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setAuthError(""); setDataError("");
+    try {
+      if (authTab === "register") {
+        await api("/api/auth/register", jsonBody({ username: username.trim(), full_name: fullName.trim(), password }), true);
+        setAuthTab("login"); notify("Đã tạo tài khoản khách hàng. Quản trị viên cần liên kết khách hàng Odoo để xem dữ liệu.");
+      } else {
+        const profile = await api<Profile & { access_token: string }>("/api/auth/login", jsonBody({ username: username.trim(), password }), true);
+        tokenStore.set(profile.access_token);
+        setMe(profile); setPage(initialPage(profile)); setData({}); setPassword("");
+        void load(profile);
+      }
+    } catch (error) { setAuthError(errorMessage(error)); }
+    finally { setBusy(false); }
+  }
+
+  function logout() {
+    requestId.current++;
+    void api("/api/auth/logout", jsonBody({})).catch(() => {});
+    tokenStore.clear(); setMe(null); setData({}); setAuthError(""); setDataError("");
+    setAccountOpen(false); setPasswordOpen(false); setPage("overview"); window.history.replaceState(null, "", "/app/");
+  }
+
+  async function changePassword(event: React.FormEvent) {
+    event.preventDefault();
+    if (await act(() => api("/api/auth/change-password", jsonBody({ old_password: oldPassword, new_password: newPassword })), "Đã đổi mật khẩu.")) {
+      setOldPassword(""); setNewPassword(""); setPasswordOpen(false);
+    }
+  }
+
+  if (restoring) return <div className="auth"><div className="auth-panel"><div className="auth-card"><h2>Đang mở phiên làm việc…</h2></div></div></div>;
+  if (!me) return <div className="auth">
+    <section className="auth-brand"><div className="brand-row"><span className="brand-mark">✓</span><span className="brand-name">ThuTiền AI</span></div><div className="brand-body"><h1>Công nợ rõ ràng.<br />Quyết định có kiểm soát.</h1><p className="lead">Kết nối hóa đơn Odoo, xếp ưu tiên F3 và chuẩn bị nháp nhắc nợ để kế toán duyệt.</p><div className="bullets"><div className="bullet">Xem số dư, hạn thanh toán và lý do xếp hạng.</div><div className="bullet">Theo dõi dự báo thu tiền và nghĩa vụ trong 12 tuần.</div><div className="bullet">Ghi nhiệm vụ, nháp và nhật ký vào PostgreSQL của ứng dụng.</div></div></div><div className="brand-foot">Odoo chỉ đọc · Kế toán giữ quyền quyết định</div></section>
+    <section className="auth-panel"><div className="auth-card"><div><span className="eyebrow">THUTIỀN AI · BẢN DEMO LOCAL</span><h2>{authTab === "login" ? "Đăng nhập" : "Tạo tài khoản khách hàng"}</h2><p className="sub">{authTab === "login" ? "Đăng nhập bằng tài khoản đã seed trong PostgreSQL." : "Tài khoản mới cần quản trị viên liên kết với khách hàng Odoo."}</p></div><div className="tabs"><button className="tab" aria-selected={authTab === "login"} onClick={() => { setAuthTab("login"); setAuthError(""); }}>Đăng nhập</button><button className="tab" aria-selected={authTab === "register"} onClick={() => { setAuthTab("register"); setAuthError(""); }}>Đăng ký</button></div><form onSubmit={submitAuth}>{authTab === "login" && <div className="demo"><span className="eyebrow">Thử từng vai trò</span><div className="chips">{demoAccounts.map(([id, label]) => <button type="button" className="chip" aria-pressed={username === id} key={id} onClick={() => setUsername(id)}>{label}</button>)}</div></div>}{authTab === "register" && <div className="field"><label>Họ tên</label><input className="input" value={fullName} onChange={e => setFullName(e.target.value)} required /></div>}<div className="field"><label>Tên đăng nhập</label><input className="input" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required /></div><div className="field"><label>Mật khẩu</label><input className="input" type="password" autoComplete={authTab === "login" ? "current-password" : "new-password"} value={password} onChange={e => setPassword(e.target.value)} minLength={authTab === "register" ? 8 : undefined} required /></div>{authError && <div className="alert alert-danger" role="alert">{authError}</div>}<button className="btn" disabled={busy}>{busy ? "Đang xử lý…" : authTab === "login" ? "Đăng nhập" : "Tạo tài khoản"}</button></form><div className="role-hint">Mật khẩu demo do người chạy <code>scripts/seed_users.py</code> thiết lập. Chọn vai trò chỉ điền tên đăng nhập, không đổi quyền tài khoản.</div></div></section>
+    {toast && <div className="toast">{toast}</div>}
+  </div>;
+
+  const nav: { id: Page; label: string; visible: boolean }[] = [
+    { id: "overview", label: "Tổng quan", visible: can("summary:read_all") || can("summary:read_own") },
+    { id: "invoices", label: can("invoice:read_all") ? "Công nợ F3" : "Hóa đơn của tôi", visible: can("invoice:read_all") || can("invoice:read_own") },
+    { id: "forecast", label: "Dự báo F4", visible: can("forecast:read") },
+    { id: "drafts", label: "Nhắc nợ", visible: can("draft:read_own") || can("draft:read_team") },
+    { id: "tasks", label: "Nhiệm vụ", visible: can("task:read_own") || can("task:read_team") },
+    { id: "payments", label: "Thanh toán", visible: can("payment:read_own") && !can("payment:read_all") },
+    { id: "users", label: "Người dùng", visible: can("user:manage") },
+    { id: "audit", label: "Nhật ký", visible: can("audit:read") },
+  ];
+  return <div className="app"><aside className="sidebar"><div className="side-brand"><span className="brand-mark">✓</span><span>ThuTiền AI</span></div><nav className="side-nav" aria-label="Điều hướng chính">{nav.filter(x => x.visible).map(x => <button className="nav-link" key={x.id} aria-current={page === x.id ? "page" : undefined} onClick={() => navigate(x.id)}>{x.label}</button>)}</nav><div className="acct"><button className="acct-trigger" aria-expanded={accountOpen} onClick={() => setAccountOpen(v => !v)}><span className="avatar">{me.full_name.slice(0, 1).toUpperCase()}</span><span className="acct-text"><span className="acct-text-name">{me.full_name}</span><span className="acct-text-role">{roleName(me.role)}</span></span></button>{accountOpen && <div className="acct-menu"><div className="acct-head"><span className="acct-name">{me.full_name}</span><span className="acct-sub">@{me.username} · {roleName(me.role)}</span></div><div className="acct-items"><button className="acct-item" onClick={() => { setPasswordOpen(true); setAccountOpen(false); }}>Đổi mật khẩu</button><button className="acct-item acct-logout" onClick={logout}>Đăng xuất / đổi vai trò</button></div></div>}<button className="logout-btn" onClick={logout}>Đăng xuất</button></div></aside>
+    <main className="content">{dataError && <div className="alert alert-danger inline-alert" role="alert"><span>{dataError}</span><button aria-label="Đóng thông báo" onClick={() => setDataError("")}>×</button></div>}{busy && <div className="loading">Đang đồng bộ dữ liệu…</div>}{page === "overview" && <Overview data={data} onNavigate={navigate} />}{page === "invoices" && <Invoices data={data} isStaff={can("invoice:read_all")} canDraft={can("draft:create")} canAssign={can("task:assign")} onDrafts={() => navigate("drafts")} onTasks={() => navigate("tasks")} act={act} />}{page === "forecast" && <ForecastPage forecast={data.forecast} />}{page === "drafts" && <Reminders data={data} canCreate={can("draft:create")} canDecide={can("draft:decide")} act={act} />}{page === "tasks" && <Tasks data={data} canAssign={can("task:assign")} act={act} />}{page === "payments" && <Customers data={data} />}{page === "users" && <AdminUsers data={data} act={act} />}{page === "audit" && <Audit data={data} />}<div className="form-actions"><button className="btn btn-secondary btn-compact" onClick={refresh} disabled={busy}>Tải lại dữ liệu</button><span className="micro">Mọi số liệu Odoo được đọc lại khi tải trang hoặc bấm nút này.</span></div></main>
+    {passwordOpen && <div className="modal-backdrop"><form className="auth-card modal-card" onSubmit={changePassword}><h2>Đổi mật khẩu</h2><div className="field"><label>Mật khẩu hiện tại</label><input className="input" type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} required /></div><div className="field"><label>Mật khẩu mới</label><input className="input" type="password" minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} required /></div><div className="form-actions"><button className="btn" disabled={busy}>Lưu mật khẩu</button><button className="btn btn-secondary" type="button" onClick={() => setPasswordOpen(false)}>Hủy</button></div></form></div>}
+    {toast && <div className="toast">✓ {toast}</div>}
+  </div>;
 }
-function Forecast({data}:{data?:Obj}) { const weeks:Obj[]=data?.weeks??[]; const max=Math.max(1,...weeks.map(w=>w.receipt_p75));return <><div className="section-heading"><div><h2>Dự báo 12 tuần</h2><p>Phân vị thu tiền P25, P50, P75 do backend tính; nghĩa vụ lấy từ hóa đơn nhà cung cấp Odoo.</p></div><span className="source-pill"><i/> Odoo · chỉ đọc</span></div><div className="forecast-grid">{weeks.map((w,i)=><article className="week-card" key={w.week_start}><span className="eyebrow">TUẦN {i+1} · {date(w.week_start)}</span><div className="bars"><i style={{height:`${Math.max(3,w.receipt_p25/max*100)}%`}}/><i style={{height:`${Math.max(3,w.receipt_p50/max*100)}%`}}/><i style={{height:`${Math.max(3,w.receipt_p75/max*100)}%`}}/></div><div className="week-legend"><span>P25 <b>{short(money(w.receipt_p25))}</b></span><span>P50 <b>{short(money(w.receipt_p50))}</b></span><span>P75 <b>{short(money(w.receipt_p75))}</b></span></div><div className="week-foot">Nghĩa vụ {short(money(w.obligations))} · chênh lệch {short(money(w.gap_p75))}</div></article>)}</div>{!weeks.length&&<div className="panel empty">Backend chưa trả dữ liệu dự báo.</div>}</> }
-function Drafts({data,canCreate,canDecide,act}:{data:Obj;canCreate:boolean;canDecide:boolean;act:(fn:()=>Promise<unknown>,s:string)=>void}) { const drafts:Obj[]=data.drafts?.items??[]; const candidates:Obj[]=data.candidates?.items??[]; const [sel,setSel]=useState<Obj|null>(null); const [subject,setSubject]=useState("");const [body,setBody]=useState("");const [tab,setTab]=useState("pending"); const shown=drafts.filter(d=>d.status===tab); const chosen=shown.find(d=>d.id===sel?.id)??shown[0]; useEffect(()=>{if(chosen){setSubject(chosen.subject);setBody(chosen.body)}},[chosen?.id,chosen?.subject,chosen?.body]);return <><div className="section-heading"><div><h2>Nháp nhắc nợ và duyệt</h2><p>Backend tạo nội dung theo mẫu cố định, kế toán trưởng duyệt. Không có email tự gửi hoặc LLM trong backend hiện tại.</p></div></div><div className="draft-layout"><div className="panel"><div className="tabs">{["pending","approved","rejected"].map(s=><button className={tab===s?"selected":""} key={s} onClick={()=>{setTab(s);setSel(null)}}>{statusText(s)} <b>{drafts.filter(d=>d.status===s).length}</b></button>)}</div>{shown.map(d=><button className={`draft-list-item ${chosen?.id===d.id?"chosen":""}`} key={d.id} onClick={()=>setSel(d)}><b>{d.invoice_id}</b><span>{d.customer_name} · {money(d.amount)}</span><small>{statusText(d.status)} · {date(d.created_at?.slice(0,10))}</small></button>)}{!shown.length&&<div className="empty">Không có nháp trong mục này.</div>}</div><div className="panel draft-detail"><h3>{chosen?`Nháp hóa đơn ${chosen.invoice_id}`:"Chi tiết nháp"}</h3>{chosen?<><p className="muted">{chosen.customer_name} · còn nợ {money(chosen.amount)} · hạn {date(chosen.due_date)}</p><label>Tiêu đề<input value={subject} onChange={e=>setSubject(e.target.value)} disabled={chosen.status!=="pending"||!canCreate}/></label><label>Nội dung<textarea rows={9} value={body} onChange={e=>setBody(e.target.value)} disabled={chosen.status!=="pending"||!canCreate}/></label><div className="checks">{(chosen.checks??[]).map((c:Obj)=><span className={c.ok?"ok":"bad"} key={c.label}>{c.ok?"✓":"!"} {c.label}</span>)}</div><div className="actions">{chosen.status==="pending"&&canCreate&&<button className="secondary" onClick={()=>act(()=>api(`/api/reminders/drafts/${chosen.id}`,{method:"PATCH",body:JSON.stringify({subject,body})}),"Đã lưu nội dung nháp.")}>Lưu chỉnh sửa</button>}{chosen.status==="pending"&&canDecide&&<><button className="primary" disabled={!chosen.checks_ok} onClick={()=>act(()=>api(`/api/reminders/drafts/${chosen.id}/approve`,jsonBody({})),"Đã duyệt nháp.")}>Duyệt</button><button className="danger" onClick={()=>act(()=>api(`/api/reminders/drafts/${chosen.id}/reject`,jsonBody({note:"Từ chối từ giao diện"})),"Đã từ chối nháp.")}>Từ chối</button></>}</div><p className="hint">Duyệt chỉ ghi nhận trạng thái và nhật ký. Không gửi email.</p></>:<p className="muted">Chọn nháp ở danh sách bên trái.</p>}</div></div>{canCreate&&<div className="panel candidate-panel"><h3>Hóa đơn có thể tạo nháp</h3><p className="muted">Dữ liệu kiểm tra từ Odoo; nháp bị chặn nếu hóa đơn chưa quá hạn, tranh chấp hoặc đã có nháp chờ duyệt.</p><div className="candidate-list">{candidates.map(i=><div className="candidate" key={i.invoice_id}><span><b>{i.invoice_id}</b> · {i.display_name}<small>Quá hạn {i.overdue_days} ngày · {money(i.remaining_amount)}</small></span><button className="secondary small-btn" onClick={()=>act(()=>api("/api/reminders/drafts",jsonBody({invoice_id:i.invoice_id})),"Đã tạo nháp từ hóa đơn Odoo.")}>Tạo nháp mẫu</button></div>)}{!candidates.length&&<div className="empty">Không có hóa đơn quá hạn đủ điều kiện tạo nháp.</div>}</div></div>}</>}
-function Tasks({data,canAssign,act}:{data:Obj;canAssign:boolean;act:(fn:()=>Promise<unknown>,s:string)=>void}) { const tasks:Obj[]=data.tasks?.items??[]; const [invoice,setInvoice]=useState("");const [assignee,setAssignee]=useState(""); const [note,setNote]=useState("");return <><div className="section-heading"><div><h2>Nhiệm vụ thu hồi công nợ</h2><p>Trạng thái và người phụ trách được lưu ở backend.</p></div></div>{canAssign&&<form className="panel task-form" onSubmit={e=>{e.preventDefault();act(()=>api("/api/tasks",jsonBody({invoice_id:invoice,assignee_id:Number(assignee),note})),"Đã giao nhiệm vụ.")}}><h3>Giao nhiệm vụ</h3><input placeholder="Mã hóa đơn" value={invoice} onChange={e=>setInvoice(e.target.value)} required/><select value={assignee} onChange={e=>setAssignee(e.target.value)} required><option value="">Chọn người phụ trách</option>{(data.team?.items??[]).map((u:Obj)=><option key={u.id} value={u.id}>{u.full_name} · {u.username}</option>)}</select><input placeholder="Ghi chú" value={note} onChange={e=>setNote(e.target.value)}/><button className="primary">Giao việc</button></form>}<div className="panel table-scroll"><table><thead><tr><th>HÓA ĐƠN</th><th>NỘI DUNG</th><th>NGƯỜI PHỤ TRÁCH</th><th>TRẠNG THÁI</th><th></th></tr></thead><tbody>{tasks.map(t=><tr key={t.id}><td>{t.invoice_id}</td><td>{t.note||t.title}</td><td>{t.assignee_name}</td><td>{t.status==="done"?"Hoàn tất":"Đang mở"}</td><td><button className="secondary small-btn" onClick={()=>act(()=>api(`/api/tasks/${t.id}`,{method:"PATCH",body:JSON.stringify({status:t.status==="done"?"open":"done"})}),"Đã cập nhật nhiệm vụ.")}>{t.status==="done"?"Mở lại":"Hoàn tất"}</button></td></tr>)}</tbody></table>{!tasks.length&&<div className="empty">Chưa có nhiệm vụ.</div>}</div></>}
-function Users({data,act}:{data:Obj;act:(fn:()=>Promise<unknown>,s:string)=>void}){const users:Obj[]=data.users?.items??[];const [name,setName]=useState("");const [full,setFull]=useState("");const [pw,setPw]=useState("demo12345");const [role,setRole]=useState("accountant");return <><div className="section-heading"><div><h2>Tài khoản hệ thống</h2><p>Quản lý tài khoản theo quyền API hiện có; không hỗ trợ tự đặt quyền tùy biến.</p></div></div><form className="panel task-form" onSubmit={e=>{e.preventDefault();act(()=>api("/api/admin/users",jsonBody({username:name,full_name:full,password:pw,role})),"Đã tạo tài khoản.")}}><h3>Tạo tài khoản</h3><input placeholder="Tên đăng nhập" value={name} onChange={e=>setName(e.target.value)} required/><input placeholder="Họ tên" value={full} onChange={e=>setFull(e.target.value)} required/><input type="password" value={pw} onChange={e=>setPw(e.target.value)} minLength={8} required/><select value={role} onChange={e=>setRole(e.target.value)}>{["accountant","chief_accountant","customer","admin"].map(x=><option key={x} value={x}>{roleText(x)}</option>)}</select><button className="primary">Tạo tài khoản</button></form><div className="panel table-scroll"><table><thead><tr><th>TÊN ĐĂNG NHẬP</th><th>HỌ TÊN</th><th>VAI TRÒ</th><th>TRẠNG THÁI</th><th></th></tr></thead><tbody>{users.map(u=><tr key={u.id}><td>{u.username}</td><td>{u.full_name}</td><td>{roleText(u.role)}</td><td>{u.is_active?"Hoạt động":"Đã khóa"}</td><td><button className="secondary small-btn" onClick={()=>act(()=>api(`/api/admin/users/${u.id}`,{method:"PATCH",body:JSON.stringify({is_active:!u.is_active})}),"Đã cập nhật tài khoản.")}>{u.is_active?"Khóa":"Mở khóa"}</button></td></tr>)}</tbody></table></div></>}
-function Audit({items}:{items:Obj[]}){return <><div className="section-heading"><div><h2>Nhật ký kiểm toán</h2><p>Nhật ký được ghi ở backend; dữ liệu nhạy cảm không hiển thị ở đây.</p></div></div><div className="panel table-scroll"><table><thead><tr><th>THỜI GIAN</th><th>NGƯỜI DÙNG</th><th>HÀNH ĐỘNG</th><th>ĐỐI TƯỢNG</th></tr></thead><tbody>{items.map((x,i)=><tr key={x.id??i}><td>{new Date(x.at).toLocaleString("vi-VN")}</td><td>{x.actor}</td><td>{x.action}</td><td>{x.target}</td></tr>)}</tbody></table>{!items.length&&<div className="empty">Chưa có nhật ký.</div>}</div></>}

@@ -74,7 +74,7 @@ def candidates():
             continue
         if inv.dispute_status == "disputed":
             disputed.append(inv.invoice_id)
-        elif inv.invoice_id not in pending:
+        elif (inv.contact_email or "").strip() and inv.invoice_id not in pending:
             ready.append({**inv.model_dump(mode="json"), "overdue_days": late})
     ready.sort(key=lambda x: -x["overdue_days"])
     return {"as_of_date": as_of.isoformat(), "items": ready, "disputed": disputed}
@@ -88,6 +88,8 @@ def create_draft(body: CreateDraft, user: dict = Depends(require_permission("dra
         raise HTTPException(404, "invoice not found or already paid")
     if inv.dispute_status == "disputed":
         raise HTTPException(409, "invoice is disputed, no reminder")
+    if not (inv.contact_email or "").strip():
+        raise HTTPException(409, "invoice has no contact email")
     late = (as_of - inv.due_date).days
     if late <= 0:
         raise HTTPException(409, "invoice is not overdue")

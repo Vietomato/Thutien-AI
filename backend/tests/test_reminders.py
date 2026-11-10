@@ -126,3 +126,10 @@ def test_candidates_lists_overdue_not_disputed_not_yet_drafted(client, team, aut
     create(client, auth("acc1"), "INV-A")
     c = client.get("/api/reminders/candidates", headers=auth("acc1")).json()
     assert [i["invoice_id"] for i in c["items"]] == ["INV-D"]
+
+
+def test_missing_email_is_not_a_reminder_candidate(client, team, auth, fake_odoo):
+    fake_odoo["invoices"][0] = fake_odoo["invoices"][0].model_copy(update={"contact_email": None})
+    candidates = client.get("/api/reminders/candidates", headers=auth("acc1")).json()["items"]
+    assert "INV-A" not in [invoice["invoice_id"] for invoice in candidates]
+    assert create(client, auth("acc1"), "INV-A").status_code == 409

@@ -31,6 +31,7 @@ export async function api<T>(path: string, init: RequestInit = {}, anonymous = f
       "role not allowed": "Tài khoản của bạn không có quyền thực hiện thao tác này.",
       "invoice is disputed, no reminder": "Hóa đơn đang tranh chấp nên không thể tạo nháp.",
       "invoice is not overdue": "Hóa đơn chưa quá hạn nên chưa thể tạo nháp.",
+      "invoice has no contact email": "Hóa đơn chưa có email liên hệ nên chưa thể tạo nháp.",
       "a pending draft already exists for this invoice": "Hóa đơn đã có nháp chờ duyệt.",
       "invoice data changed in Odoo since this draft was written; reject it and create a new one": "Dữ liệu hóa đơn đã đổi trên Odoo; hãy từ chối nháp cũ và tạo nháp mới.",
     };

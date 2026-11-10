@@ -42,7 +42,7 @@ def list_tasks(scope: Literal["mine", "team"] = "mine", status: Literal["open", 
     if scope == "team":
         if not has_permission(user["role"], "task:read_team"):
             raise HTTPException(403, "role not allowed")
-        ids = _team_ids(user)
+        ids = [user["id"], *_team_ids(user)]
     else:
         ids = [user["id"]]
     return {"scope": scope, "items": tasks.list_for(ids, status) if ids else []}

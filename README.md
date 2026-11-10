@@ -93,7 +93,7 @@ Use the admin screen to create real accounts, link customers and change roles.
 
 Build the React + TypeScript + Tailwind frontend before starting FastAPI. FastAPI serves the compiled app at `/app/`.
 
-`frontend/index.html` is the Vite entry point; React renders the pages from `frontend/src/App.tsx` into its `#root` element.
+`frontend/index.html` is the Vite entry point; React renders the shell from `frontend/src/App.tsx` and the pages from `frontend/src/FinancePages.tsx` and `frontend/src/Operations.tsx` into its `#root` element. `frontend/src/layout.css` preserves the original web layout; `index.css` applies the typography and colors.
 The frontend calls same-origin `/api` routes. Login returns a JWT, and the shared API client sends it as a Bearer token.
 `JWT_SECRET` belongs only in the backend environment; no API key is stored in frontend code.
 

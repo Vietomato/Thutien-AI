@@ -37,6 +37,12 @@ def test_chief_sees_own_teams_tasks_only(client, team, auth, fake_odoo):
     assert client.get("/api/tasks?scope=team", headers=auth("chief2")).json()["items"][0]["assignee_username"] == "acc2"
 
 
+def test_chief_team_scope_includes_tasks_assigned_to_self(client, team, auth, fake_odoo):
+    assign(client, auth("chief1"), team["chief1"]["id"])
+    seen = client.get("/api/tasks?scope=team", headers=auth("chief1")).json()["items"]
+    assert [t["assignee_username"] for t in seen] == ["chief1"]
+
+
 def test_team_list_contains_only_own_team_and_self(client, team, auth, fake_odoo):
     names = [m["username"] for m in client.get("/api/team", headers=auth("chief1")).json()["items"]]
     assert names == ["chief1", "acc1"]
