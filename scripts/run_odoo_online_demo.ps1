@@ -43,6 +43,11 @@ $env:APP_DB_NAME = 'thutien_online'
 $env:APP_DB_USER = 'thutien_app'
 $env:APP_DB_HOST = '127.0.0.1'
 $env:OLLAMA_ENABLED = if ($WithOllama) { '1' } else { '0' }
+
+# Validate cloud authentication before starting Docker, installing packages or building the UI.
+& python -c "from backend.app import odoo_online; odoo_online._call('res.users', 'context_get'); print('Odoo Online API: authentication OK')"
+Check-Exit 'Xác thực Odoo Online'
+
 if ($WithOllama) {
     $compose = @('compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.ollama.yml')
     & docker @compose up -d db ollama

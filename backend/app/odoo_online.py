@@ -55,8 +55,10 @@ def _call(model: str, method: str, **params):
             return json.load(response)
     except HTTPError as exc:
         # Odoo may echo request details in its error body. Never forward that body.
-        if exc.code in (401, 403):
-            raise OdooOnlineError(f"Odoo Online denied API access (HTTP {exc.code}); check plan, key and user rights") from None
+        if exc.code == 401:
+            raise OdooOnlineError("Odoo Online rejected the API key (HTTP 401); create a new key in this Odoo database") from None
+        if exc.code == 403:
+            raise OdooOnlineError("Odoo Online denied API access (HTTP 403); check the Custom plan and user rights") from None
         raise OdooOnlineError(f"Odoo Online API failed (HTTP {exc.code})") from None
     except (URLError, TimeoutError, ValueError) as exc:
         raise OdooOnlineError("Odoo Online API is unavailable or returned invalid JSON") from None

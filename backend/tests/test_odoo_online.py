@@ -28,15 +28,17 @@ def test_requires_https_origin_and_api_key(monkeypatch):
         odoo_online.open_invoices()
 
 
-def test_http_error_does_not_disclose_key_or_odoo_response(monkeypatch):
+@pytest.mark.parametrize("status,expected", [(401, "rejected the API key"), (403, "Custom plan")])
+def test_http_error_does_not_disclose_key_or_odoo_response(monkeypatch, status, expected):
     def denied(request, timeout):
-        raise HTTPError(request.full_url, 403, "denied", {}, BytesIO(b"very-private-test-key"))
+        raise HTTPError(request.full_url, status, "denied", {}, BytesIO(b"very-private-test-key"))
 
     monkeypatch.setattr(odoo_online, "urlopen", denied)
     with pytest.raises(odoo_online.OdooOnlineError) as exc:
         odoo_online._call("account.move", "search_read", domain=[], fields=[])
     assert "very-private-test-key" not in str(exc.value)
-    assert "HTTP 403" in str(exc.value)
+    assert f"HTTP {status}" in str(exc.value)
+    assert expected in str(exc.value)
 
 
 def test_open_invoices_map_odoo_name_partner_and_version(monkeypatch):

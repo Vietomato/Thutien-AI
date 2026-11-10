@@ -39,6 +39,11 @@ Add `-WithOllama` to the command if you also want local LLM wording for drafts.
 The default local Odoo demo still uses `run_t18_demo.ps1` and its own
 `thutien_app` database.
 
+If the initial API check returns HTTP 401, Odoo rejected the key. Generate a
+new API key from the user profile **inside this Odoo database**, then update
+only your ignored `.env`. The login password and keys from unrelated services
+are not Odoo JSON-2 API keys. HTTP 403 indicates access rights or plan limits.
+
 Only VND invoices and supplier bills are included; other currencies are not
 converted. Disputes are detected from `[DISPUTE]` in the invoice narration or
 the optional configured field. Confirm your Odoo dispute field before using
