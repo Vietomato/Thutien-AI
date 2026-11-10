@@ -71,7 +71,7 @@ def _connect():
             host=os.getenv("ODOO_DB_HOST", "localhost"),
             port=int(os.getenv("ODOO_DB_PORT", "5432")),
             dbname=os.getenv("ODOO_DB_NAME", "odoo"),
-            user=os.getenv("ODOO_RO_USER"),
+            user=os.getenv("ODOO_RO_USER", "thutien_ro"),
             password=os.getenv("ODOO_RO_PASSWORD"),
             connect_timeout=5,
             options="-c default_transaction_read_only=on",
