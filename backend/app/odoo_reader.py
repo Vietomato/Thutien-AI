@@ -10,7 +10,8 @@ _INVOICE_SELECT = """
 SELECT COALESCE(m.ref, m.id::text), COALESCE(p.ref, p.id::text), p.name,
        m.invoice_date_due, round(m.amount_total)::bigint,
        round(m.amount_residual)::bigint,
-       COALESCE(m.narration::text, '') LIKE '%%[DISPUTE]%%', p.email
+       COALESCE(m.narration::text, '') LIKE '%%[DISPUTE]%%', p.email,
+       m.write_date::text
 FROM account_move m JOIN res_partner p ON p.id = m.partner_id
 WHERE m.move_type = 'out_invoice' AND m.state = 'posted'
   AND m.amount_residual > 0 {extra}
@@ -92,7 +93,8 @@ def _query(sql: str, params: list | None = None) -> list[tuple]:
 def _invoice(r) -> Invoice:
     return Invoice(invoice_id=r[0], customer_id=r[1], display_name=r[2], due_date=r[3],
                    invoice_amount=r[4], remaining_amount=r[5],
-                   dispute_status="disputed" if r[6] else "none", contact_email=r[7])
+                   dispute_status="disputed" if r[6] else "none", contact_email=r[7],
+                   source_version=r[8])
 
 
 def open_invoices(customer_id: str | None = None) -> list[Invoice]:

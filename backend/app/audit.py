@@ -12,14 +12,29 @@ def _clean(detail: dict | None) -> dict:
     return {k: ("***" if k.lower() in SENSITIVE_KEYS else v) for k, v in detail.items()}
 
 
-def append_audit(actor: str, action: str, target: str, detail: dict | None = None) -> int:
+def append_audit(actor: str, action: str, target: str, detail: dict | None = None, *, conn=None) -> int:
     """Append one audit record and return its id."""
-    with connect() as conn:
-        row = conn.execute(
+    def insert(db):
+        row = db.execute(
             "INSERT INTO audit_log (actor, action, target, detail) VALUES (%s, %s, %s, %s) RETURNING id",
             (actor, action, target, Jsonb(_clean(detail))),
         ).fetchone()
         return row["id"]
+    if conn is not None:
+        return insert(conn)
+    with connect() as own_conn:
+        return insert(own_conn)
+
+
+def list_draft_history(draft_id: int) -> list[dict]:
+    """Audit trail for one visible draft; excludes unrelated login and admin events."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT id, ts, actor, action, target, detail FROM audit_log "
+            "WHERE action = ANY(%s) AND detail->>'draft_id' = %s ORDER BY id",
+            (["create_draft", "edit_draft", "approve_draft", "reject_draft"], str(draft_id)),
+        ).fetchall()
+    return [{**r, "ts": r["ts"].isoformat()} for r in rows]
 
 
 def list_audit(limit: int = 100, actor: str | None = None, action: str | None = None) -> list[dict]:
