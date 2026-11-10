@@ -75,7 +75,27 @@ export default function App() {
     finally { setBusy(false); }
   };
   const logout = async () => { try { await api("/api/auth/logout", jsonBody({})); } catch {} tokenStore.clear(); setMe(null); setData({}); };
-  if (!me) return <main className="login-wrap"><form className="login-card" onSubmit={login}><div className="brand-mark">✓</div><p className="eyebrow">THUTIEN AI · DEMO ODOO</p><h1>Đăng nhập</h1><p className="muted">Đăng nhập bằng tài khoản backend đã seed.</p><label>Tên đăng nhập<input value={username} onChange={e=>setUsername(e.target.value)} autoComplete="username" /></label><label>Mật khẩu<input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" /></label>{error && <div className="alert error">{error}</div>}<button className="primary full" disabled={busy}>{busy ? "Đang đăng nhập…" : "Đăng nhập"}</button><p className="hint">Tài khoản demo: accountant1 / chief1 · Mật khẩu demo thường là demo12345.</p></form></main>;
+  if (!me) return <main className="login-wrap">
+    <form className="login-card" onSubmit={login}>
+      <div className="brand-mark">✓</div>
+      <p className="eyebrow">THUTIEN AI · DEMO ODOO</p>
+      <h1>Đăng nhập</h1>
+      <p className="muted">Chọn vai trò demo hoặc nhập tên tài khoản của bạn.</p>
+      <div className="role-picker" aria-label="Tài khoản demo">
+        {([
+          ["accountant1", "Kế toán viên"], ["chief1", "Kế toán trưởng"],
+          ["customer1", "Khách hàng"], ["admin1", "Quản trị"],
+        ] as const).map(([name, label]) =>
+          <button key={name} type="button" className={username === name ? "role-choice selected" : "role-choice"} onClick={() => setUsername(name)}>{label}</button>
+        )}
+      </div>
+      <label>Tên đăng nhập<input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" /></label>
+      <label>Mật khẩu<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" /></label>
+      {error && <div className="alert error">{error}</div>}
+      <button className="primary full" disabled={busy}>{busy ? "Đang đăng nhập…" : "Đăng nhập"}</button>
+      <p className="hint">Mật khẩu tài khoản demo đã seed: demo12345.</p>
+    </form>
+  </main>;
   const nav = [
     ["overview","Tổng quan", "summary:read_all"], ["invoices","Công nợ F3", "invoice:read_all"],
     ["forecast","Dự báo F4", "forecast:read"], ["drafts","Nhắc nợ & duyệt", "draft:read_own"],
@@ -85,7 +105,7 @@ export default function App() {
   const items: Obj[] = data.priority?.items ?? data.invoices?.items ?? [];
   const createDraft = (invoiceId:string) => act(() => api("/api/reminders/drafts",jsonBody({invoice_id:invoiceId})), "Đã tạo nháp từ dữ liệu Odoo; chưa gửi email.");
   return <div className="app-shell"><aside className="sidebar"><div className="logo"><span className="brand-mark">✓</span><span>ThuTien AI</span></div><div className="nav-label">WORKSPACE</div><nav>{nav.map(([id,label])=><button key={id} className={page===id?"nav-item active":"nav-item"} onClick={()=>setPage(id as string)}><span className="nav-dot"/>{label}</button>)}</nav><div className="side-bottom"><div className="avatar">{(me.full_name??me.username).slice(0,1).toUpperCase()}</div><div className="who"><b>{me.full_name}</b><small>{roleText(me.role)}</small></div><button className="logout" onClick={logout}>Đăng xuất</button></div></aside>
-  <main className="main"><header className="topbar"><div><div className="eyebrow">THUTIEN AI / WORKSPACE</div><h1>{title}</h1></div><div className="top-actions"><span className="source-pill"><i/> Odoo · chỉ đọc</span><button className="icon-btn" onClick={()=>void refresh()} title="Tải lại">↻</button><span className="avatar small">{(me.full_name??me.username).slice(0,1).toUpperCase()}</span></div></header>
+  <main className="main"><header className="topbar"><div><div className="eyebrow">THUTIEN AI / WORKSPACE</div><h1>{title}</h1></div><div className="top-actions"><span className="source-pill"><i/> Odoo · chỉ đọc</span><button className="icon-btn" onClick={()=>void refresh()} title="Tải lại">↻</button><button className="switch-account" onClick={logout} title="Đăng xuất để đổi vai trò" aria-label="Đổi tài khoản">Đổi tài khoản</button><span className="avatar small">{(me.full_name??me.username).slice(0,1).toUpperCase()}</span></div></header>
   <section className="content">{error&&<div className="alert error">{error}<button onClick={()=>setError("")}>×</button></div>}{busy&&<div className="loading-line">Đang đồng bộ dữ liệu…</div>}
   {page==="overview"&&<><div className="hero"><div><div className="eyebrow">BẢNG ĐIỀU KHIỂN</div><h2>Chào {me.full_name?.split(" ").slice(-1)[0] ?? me.username}</h2><p>Dữ liệu công nợ được đọc trực tiếp từ Odoo. Mọi nháp cần người có thẩm quyền duyệt.</p></div><span className="hero-icon">↗</span></div><div className="kpis">{[["Còn phải thu",money(data.summary?.total_remaining),"tổng số dư mở"],["Hóa đơn mở",data.summary?.open_count??items.length,"hóa đơn"],["Đã quá hạn",money(data.summary?.overdue_amount),`${data.summary?.overdue_count??0} hóa đơn`],["Tranh chấp",money(data.summary?.disputed_amount),`${data.summary?.disputed_count??0} hóa đơn`]].map(([a,b,c])=><div className="kpi" key={a as string}><span>{a}</span><strong>{b}</strong><small>{c}</small></div>)}</div><InvoicesTable items={(data.priority?.items??data.invoices?.items??[]).slice(0,5)} createDraft={createDraft} onSelect={()=>setPage("invoices")} canDraft={canSee("draft:create")} /></>}
   {page==="invoices"&&<><div className="section-heading"><div><h2>Danh sách ưu tiên F3</h2><p>Xếp hạng theo số dư còn nợ, tỷ lệ trả trễ và số ngày quá hạn.</p></div><span className="source-pill"><i/> {data.priority?.source??data.invoices?.source??"Đang tải"} · {date(data.priority?.as_of_date??data.invoices?.as_of_date)}</span></div><InvoicesTable items={items} createDraft={createDraft} onSelect={()=>{}} canDraft={canSee("draft:create")} /></>}
