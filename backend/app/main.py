@@ -22,6 +22,7 @@ from .config import as_of_date, data_source
 from .routes_admin import router as admin_router
 from .routes_data import router as data_router
 from .routes_f3 import router as f3_router
+from .routes_obligations import router as obligations_router
 from .routes_reminders import router as reminders_router
 from .routes_tasks import router as tasks_router
 
@@ -43,6 +44,7 @@ app = FastAPI(title="ThuTien AI", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(data_router)
 app.include_router(f3_router)
+app.include_router(obligations_router)
 app.include_router(reminders_router)
 app.include_router(tasks_router)
 app.include_router(admin_router)

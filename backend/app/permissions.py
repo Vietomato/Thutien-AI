@@ -23,7 +23,7 @@ ROLE_LABEL = {
 
 _STAFF = frozenset({
     "invoice:read_all", "payment:read_all", "summary:read_all",
-    "prediction:read", "forecast:read",
+    "prediction:read", "forecast:read", "obligation:write",
     "draft:create", "draft:read_own",
     "task:read_own", "task:update",
 })

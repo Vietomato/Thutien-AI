@@ -100,13 +100,13 @@ def test_disputed_invoice_gets_no_prediction():
 
 def test_overdue_uses_only_delays_at_least_as_long():
     # 30 days overdue: only the delays 30 and 40 are still possible.
-    p = analytics.predict_invoice(inv(due=date(2026, 10, 10)), AS_OF, [2, 5, 30, 40], [])
+    p = analytics.predict_invoice(inv(due=date(2026, 10, 10)), AS_OF, [2, 5, 7, 30, 40], [])
     assert not p.overdue_adjusted
     assert p.predicted_date_p25 >= AS_OF
 
 
 def test_overdue_longer_than_all_history_is_shifted_from_today():
-    p = analytics.predict_invoice(inv(due=date(2026, 9, 1)), AS_OF, [2, 4, 6], [])
+    p = analytics.predict_invoice(inv(due=date(2026, 9, 1)), AS_OF, [2, 4, 6, 8, 10], [])
     assert p.overdue_adjusted
     assert p.predicted_date_p25 > AS_OF  # never in the past
 
@@ -119,7 +119,7 @@ def test_predictions_are_ordered_and_never_in_the_past():
 
 def test_forecast_buckets_receipts_and_flags_gaps():
     invoices = [inv("A", amount=100, due=date(2026, 11, 20)), inv("B", amount=50, due=date(2026, 11, 20))]
-    preds = analytics.predict(invoices, [("C1", 0)] * 3, AS_OF)
+    preds = analytics.predict(invoices, [("C1", 0)] * 5, AS_OF)
     bills = [(date(2026, 11, 10), 80), (date(2026, 10, 1), 20)]  # second bill is already overdue -> week 1
     weeks = analytics.forecast(invoices, preds, bills, AS_OF)
     assert len(weeks) == 12 and weeks[0].week_start == AS_OF
@@ -131,7 +131,7 @@ def test_forecast_buckets_receipts_and_flags_gaps():
 
 def test_forecast_ignores_disputed_and_far_future():
     invoices = [inv("A", amount=100, due=date(2027, 6, 1)), inv("B", amount=70, dispute="disputed")]
-    preds = analytics.predict(invoices, [("C1", 0)] * 3, AS_OF)
+    preds = analytics.predict(invoices, [("C1", 0)] * 5, AS_OF)
     weeks = analytics.forecast(invoices, preds, [], AS_OF)
     assert sum(w.receipt_p50 for w in weeks) == 0
 

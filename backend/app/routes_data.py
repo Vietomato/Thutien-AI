@@ -1,8 +1,10 @@
 """Business data read from Odoo: invoices, payments, summary, predictions, forecast.
 Staff see everything; a customer sees only the invoices and payments linked to their own Odoo customer id."""
+from datetime import date
+
 from fastapi import APIRouter, Depends
 
-from . import analytics, odoo_reader
+from . import analytics, obligations, odoo_reader
 from .auth import require_any_permission, require_permission
 from .config import as_of_date, data_source
 from .permissions import has_permission
@@ -51,9 +53,22 @@ def predictions():
 
 @router.get("/forecast", dependencies=[Depends(require_permission("forecast:read"))])
 def forecast():
+    """Receipts per week under three scenarios against outgoings: supplier bills read from Odoo plus the
+    expected outgoings the accountant typed in. Money beyond the last week is reported, not dropped."""
     as_of = as_of_date()
     invoices = odoo_reader.open_invoices()
     preds = analytics.predict(invoices, odoo_reader.paid_delays(as_of), as_of)
-    weeks = analytics.forecast(invoices, preds, odoo_reader.supplier_bills(), as_of)
-    return envelope(weeks=[w.model_dump(mode="json") for w in weeks],
-                    risky_weeks=sum(1 for w in weeks if w.gap_p75 > 0))
+    odoo_bills = odoo_reader.supplier_bills()
+    manual = obligations.list_all()
+    bills = odoo_bills + [(date.fromisoformat(o["due_date"]), o["amount"]) for o in manual]
+    weeks = analytics.forecast(invoices, preds, bills, as_of)
+    return envelope(
+        weeks=[w.model_dump(mode="json") for w in weeks],
+        risky_weeks=sum(1 for w in weeks if w.gap_p75 > 0),
+        alerts=[{"week_start": w.week_start.isoformat(), "receipt_p75": w.receipt_p75,
+                 "obligations": w.obligations, "gap_p75": w.gap_p75} for w in weeks if w.gap_p75 > 0],
+        receipts_out_of_horizon=analytics.beyond_horizon(invoices, preds, as_of),
+        obligations_out_of_horizon=analytics.bills_beyond_horizon(bills, as_of),
+        obligations_sources={"odoo_supplier_bills": sum(a for _, a in odoo_bills),
+                             "manual": sum(o["amount"] for o in manual), "manual_count": len(manual)},
+    )

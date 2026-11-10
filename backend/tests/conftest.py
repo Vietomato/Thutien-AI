@@ -28,7 +28,7 @@ def clean_db():
     except db.AppDbUnavailable as e:
         pytest.skip(f"test database not available: {e}")
     with db.connect() as conn:
-        conn.execute("TRUNCATE audit_log, reminder_drafts, tasks, users RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE audit_log, reminder_drafts, tasks, obligations, users RESTART IDENTITY CASCADE")
     yield
 
 
