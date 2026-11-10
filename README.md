@@ -21,6 +21,27 @@ An invoice is eligible for a reminder draft only when it is overdue, has a posit
 is not disputed, and has no pending draft. This score is a work-queue heuristic, not a claim that an invoice
 will or will not be paid.
 
+## T18 local LLM for reminder wording (optional)
+
+The backend can ask a local Ollama model for two generic Vietnamese sentences. It never sends customer,
+invoice, amount, date, or email data to the model. The backend inserts those facts from Odoo, validates the
+model output, and saves the draft in the application database. The UI labels the source as Ollama or a
+template fallback. A draft is never sent automatically and still requires accountant review.
+
+On Windows, install Ollama from https://ollama.com/download, then run:
+
+    ollama pull qwen3:4b
+
+In the same PowerShell terminal used to start the backend, set:
+
+    $env:OLLAMA_ENABLED="1"
+    $env:OLLAMA_MODEL="qwen3:4b"
+    $env:OLLAMA_URL="http://127.0.0.1:11434"
+
+Restart the backend, sign in as an accountant, and create a reminder draft for an overdue invoice. If Ollama
+is unavailable, times out, or returns invalid text, the backend uses and labels the fixed template instead.
+The optional `OLLAMA_TIMEOUT_SECONDS` defaults to 30. No API key is needed for a local model.
+
 ## Roles and permissions
 
 | | Nhân viên kế toán | Kế toán trưởng | Khách hàng | Admin |

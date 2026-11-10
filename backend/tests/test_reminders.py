@@ -13,6 +13,7 @@ def test_accountant_creates_a_draft_from_real_invoice_fields(client, team, auth,
     assert r.status_code == 201
     d = r.json()
     assert d["status"] == "pending" and d["amount"] == 120_000_000 and d["overdue_days"] == 30
+    assert d["generation_source"] == "template_fallback"
     assert "120.000.000" in d["body"] and "10/10/2026" in d["body"] and d["created_by_username"] == "acc1"
     assert d["checks_ok"] and all(c["ok"] for c in d["checks"])
     assert audit.list_audit(action="create_draft")[0]["target"] == "INV-A"

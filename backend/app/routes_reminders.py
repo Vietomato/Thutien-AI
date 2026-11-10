@@ -5,7 +5,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import analytics, drafts, odoo_reader, users
+from . import analytics, draft_generation, drafts, odoo_reader, users
 from .audit import append_audit
 from .auth import require_any_permission, require_permission
 from .config import as_of_date
@@ -96,12 +96,13 @@ def create_draft(body: CreateDraft, user: dict = Depends(require_permission("dra
     delays = odoo_reader.paid_delays(as_of)
     pred = analytics.predict_invoice(
         inv, as_of, analytics.group_delays(delays).get(inv.customer_id, []), [d for _, d in delays])
-    subject, text = drafts.compose(inv, pred.predicted_date_p50 if pred else as_of)
+    subject, text, source = draft_generation.generate(inv, pred.predicted_date_p50 if pred else as_of)
     try:
-        d = drafts.create(inv, late, subject, text, user["id"])
+        d = drafts.create(inv, late, subject, text, user["id"], source)
     except drafts.DraftExists:
         raise HTTPException(409, "a pending draft already exists for this invoice")
-    append_audit(user["username"], "create_draft", inv.invoice_id, {"draft_id": d["id"]})
+    append_audit(user["username"], "create_draft", inv.invoice_id,
+                 {"draft_id": d["id"], "generation_source": source})
     return _with_checks(d, {inv.invoice_id: inv})
 
 

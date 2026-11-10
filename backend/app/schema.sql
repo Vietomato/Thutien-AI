@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS reminder_drafts (
     overdue_days  INT NOT NULL,
     subject       TEXT NOT NULL,
     body          TEXT NOT NULL,
+    generation_source TEXT NOT NULL DEFAULT 'template_fallback',
     status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
     created_by    BIGINT NOT NULL REFERENCES users(id),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -55,6 +56,8 @@ CREATE TABLE IF NOT EXISTS reminder_drafts (
     decided_at    TIMESTAMPTZ,
     decision_note TEXT
 );
+-- Existing local databases were created before T18; migrate without discarding drafts.
+ALTER TABLE reminder_drafts ADD COLUMN IF NOT EXISTS generation_source TEXT NOT NULL DEFAULT 'template_fallback';
 -- At most one pending draft per invoice.
 CREATE UNIQUE INDEX IF NOT EXISTS reminder_one_pending ON reminder_drafts (invoice_id) WHERE status = 'pending';
 
