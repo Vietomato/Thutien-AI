@@ -1,9 +1,10 @@
-"""Read-only access to Odoo's PostgreSQL database. Never writes."""
+"""Read-only Odoo data. Local PostgreSQL or Odoo Online JSON-2, selected by env."""
 import os
 from datetime import date
 
 import psycopg
 
+from . import odoo_online
 from .contracts import Invoice, Payment
 
 _INVOICE_SELECT = """
@@ -66,6 +67,20 @@ class OdooUnavailable(Exception):
     pass
 
 
+def _online() -> bool:
+    source = os.getenv("ODOO_SOURCE", "local_db").strip().lower()
+    if source not in ("local_db", "online"):
+        raise OdooUnavailable("ODOO_SOURCE must be local_db or online")
+    return source == "online"
+
+
+def _cloud(method: str, *args):
+    try:
+        return getattr(odoo_online, method)(*args)
+    except odoo_online.OdooOnlineError as exc:
+        raise OdooUnavailable(str(exc)) from None
+
+
 def _connect():
     try:
         return psycopg.connect(
@@ -99,6 +114,8 @@ def _invoice(r) -> Invoice:
 
 def open_invoices(customer_id: str | None = None) -> list[Invoice]:
     """Open invoices. With customer_id, only that customer's (the filter is applied in SQL)."""
+    if _online():
+        return _cloud("open_invoices", customer_id)
     if customer_id is None:
         rows = _query(_INVOICE_SELECT.format(extra=""))
     else:
@@ -107,11 +124,15 @@ def open_invoices(customer_id: str | None = None) -> list[Invoice]:
 
 
 def open_invoice(invoice_id: str) -> Invoice | None:
+    if _online():
+        return _cloud("open_invoice", invoice_id)
     rows = _query(_INVOICE_SELECT.format(extra=f"AND {_INV_ID} = %s"), [invoice_id])
     return _invoice(rows[0]) if rows else None
 
 
 def payment_history(customer_id: str | None = None) -> list[Payment]:
+    if _online():
+        return _cloud("payment_history", customer_id)
     if customer_id is None:
         rows = _query(_PAYMENT_SELECT.format(extra=""))
     else:
@@ -122,6 +143,8 @@ def payment_history(customer_id: str | None = None) -> list[Payment]:
 
 def paid_delays(as_of_date: date | None = None) -> list[tuple[str, int]]:
     """(customer_id, days late) for fully paid invoices settled by the calculation date."""
+    if _online():
+        return _cloud("paid_delays", as_of_date)
     sql = _DELAYS_SQL
     params = None
     if as_of_date is not None:
@@ -132,8 +155,12 @@ def paid_delays(as_of_date: date | None = None) -> list[tuple[str, int]]:
 
 def supplier_bills() -> list[tuple[date, int]]:
     """(due date, amount) of supplier bills still unpaid."""
+    if _online():
+        return _cloud("supplier_bills")
     return [(r[0], int(r[1])) for r in _query(_BILLS_SQL)]
 
 
 def customers() -> list[dict]:
+    if _online():
+        return _cloud("customers")
     return [{"customer_id": r[0], "name": r[1]} for r in _query(_CUSTOMERS_SQL)]

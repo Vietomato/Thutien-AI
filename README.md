@@ -4,6 +4,47 @@ An assistant for accounts receivable and cash flow on Odoo.
 Principle: the system reads and calculates, the accountant stays in control.
 The system is read-only on Odoo: nothing is ever written to it.
 
+## Optional Odoo Online source
+
+The default demo reads the local Odoo PostgreSQL container. To read a teammate's
+Odoo Online instance instead, the backend supports Odoo 19+ JSON-2 with an API
+key. Odoo documents External API access for **Custom** plans; One App Free and
+Standard plans do not provide it. Use a dedicated Odoo user with read access
+only to the accounting records the demo needs. The API key stays in the ignored
+local `.env`, never in React, `.env.example`, a commit, or a chat message.
+
+Add these lines to your existing `.env` (replace the placeholder locally):
+
+```dotenv
+ODOO_ONLINE_URL=https://demo-trading-company.odoo.com
+ODOO_ONLINE_API_KEY=<your Odoo API key>
+# Optional if the domain does not identify the database by itself:
+# ODOO_ONLINE_DB=demo-trading-company
+# Optional: technical Odoo field containing the dispute state, if your database has one:
+# ODOO_ONLINE_DISPUTE_FIELD=x_studio_dispute_status
+```
+
+Create the key in Odoo: **Preferences / My Profile → Account Security → New API
+Key**. The Odoo user needs read access to invoices, partners, currencies,
+invoice lines and payment reconciliations. Run from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_odoo_online_demo.ps1
+```
+
+The script starts local PostgreSQL for users/drafts/tasks/audit, creates a
+separate `thutien_online` application database, builds the frontend and opens
+the next available backend port from 8005. It does **not** write to Odoo Online.
+Add `-WithOllama` to the command if you also want local LLM wording for drafts.
+The default local Odoo demo still uses `run_t18_demo.ps1` and its own
+`thutien_app` database.
+
+Only VND invoices and supplier bills are included; other currencies are not
+converted. Disputes are detected from `[DISPUTE]` in the invoice narration or
+the optional configured field. Confirm your Odoo dispute field before using
+reminder eligibility. All API errors are surfaced; the app does not silently
+replace cloud data with local demo data.
+
 ## How the data is organised
 
 - **Odoo database** (read-only): customers, invoices, payments, supplier bills. Every business number comes from here.
