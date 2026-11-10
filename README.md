@@ -71,6 +71,33 @@ If Odoo is unreachable the API returns HTTP 502; it never falls back to demo dat
 
 Never commit real passwords. Keep them in your own terminal or in `.env` (ignored by git).
 
+## Odoo online (Odoo.com) through the API
+
+Hosted Odoo does not expose its PostgreSQL database, so the app can read it through Odoo's API instead
+(`app/odoo_api_reader.py`). It is read-only: only `search_read`, `read` and `search_count` are ever sent, and
+any other method is refused before a request is made.
+
+1. In Odoo: your profile > Account Security > New API Key. Copy the key at once; Odoo shows it only once.
+   The key acts with the rights of its user, which must have Accounting / Invoicing access, otherwise the
+   invoice requests are answered with "access denied" (HTTP 403).
+2. Set these in your own `.env` (never commit it), then load `.env` into your terminal as above:
+
+        DATA_SOURCE=odoo
+        ODOO_MODE=api
+        ODOO_URL=https://yourcompany.odoo.com
+        ODOO_DB_NAME=yourcompany
+        ODOO_API_KEY=<your API key>
+
+   Odoo 19 and later is read through its JSON-2 API (the default). For older Odoo set `ODOO_API_TRANSPORT=xmlrpc`
+   and also `ODOO_API_USER` (the login of the key's user). A pasted browser address such as
+   `https://yourcompany.odoo.com/odoo` is cut down to scheme and host.
+3. Check the connection (prints counts only):
+
+        python scripts/check_odoo_api.py
+
+Prefer a dedicated Odoo user that can only read invoices. The app never writes to Odoo.
+`scripts/seed_odoo.py` is the one exception: it writes demo invoices, so only run it on a demo or trial database.
+
 ## Cash-flow forecast (F4)
 
 Receipts are predicted per open invoice (`app/prediction.py`) and summed by week for three scenarios
