@@ -62,5 +62,7 @@ def health():
             "as_of_date": as_of_date().isoformat(), "app_db": app_db}
 
 
-# Web frontend (plain HTML/JS). Mounted last so it never shadows an API route.
-app.mount("/app", StaticFiles(directory=ROOT / "frontend", html=True), name="frontend")
+# Serve the compiled React app when available; retain the previous static UI as a build fallback.
+frontend_dist = ROOT / "frontend" / "dist"
+frontend_root = frontend_dist if (frontend_dist / "index.html").is_file() else ROOT / "frontend"
+app.mount("/app", StaticFiles(directory=frontend_root, html=True), name="frontend")

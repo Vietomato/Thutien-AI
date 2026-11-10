@@ -91,6 +91,13 @@ Use the admin screen to create real accounts, link customers and change roles.
 
 ### 4. Run
 
+Build the React + TypeScript + Tailwind frontend before starting FastAPI. FastAPI serves the compiled app at `/app/`.
+
+    cd frontend
+    npm ci
+    npm run build
+    cd ..
+
     cd backend
     python -m uvicorn app.main:app --reload
 
