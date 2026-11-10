@@ -1,5 +1,3 @@
-import { API_BASE_URL } from "@/config/api";
-
 const TOKEN_KEY = "thutien.access-token";
 
 export class ApiError extends Error {
@@ -19,7 +17,7 @@ export async function api<T>(path: string, init: RequestInit = {}, anonymous = f
   const token = tokenStore.get();
   if (token && !anonymous) headers.set("Authorization", `Bearer ${token}`);
   let response: Response;
-  try { response = await fetch(API_BASE_URL + path, { ...init, headers }); }
+  try { response = await fetch(path, { ...init, headers }); }
   catch { throw new ApiError(0, "Không kết nối được backend. Kiểm tra server đang chạy."); }
   const text = await response.text();
   let body: any = null;

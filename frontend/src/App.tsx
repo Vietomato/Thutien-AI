@@ -9,6 +9,12 @@ const serverMsg = (e: unknown) => e instanceof Error ? e.message : "Có lỗi x�
 const statusText = (s: string) => ({ pending:"Chờ duyệt", approved:"Đã duyệt", rejected:"Đã từ chối" }[s] ?? s);
 const roleText = (s: string) => ({ accountant:"Kế toán viên", chief_accountant:"Kế toán trưởng", customer:"Khách hàng", admin:"Quản trị viên" }[s] ?? s);
 const short = (s: string) => (s ?? "").replaceAll("₫", "đ");
+const homePage = (profile: Obj) => {
+  const permissions = new Set<string>(profile.permissions ?? []);
+  if (permissions.has("summary:read_all") || permissions.has("summary:read_own")) return "overview";
+  if (permissions.has("user:manage")) return "users";
+  return "invoices";
+};
 
 export default function App() {
   const [me, setMe] = useState<Obj|null>(null);
@@ -48,7 +54,7 @@ export default function App() {
   useEffect(() => { if (me) void load(me); }, [me, load]);
   useEffect(() => {
     const token = tokenStore.get(); if (!token) return;
-    api<Obj>("/api/auth/me").then(setMe).catch(() => tokenStore.clear());
+    api<Obj>("/api/auth/me").then(profile => { setMe(profile); setPage(homePage(profile)); }).catch(() => tokenStore.clear());
   }, []);
   const perms = useMemo(() => new Set<string>(me?.permissions ?? []), [me]);
   const canSee = (p: string) => perms.has(p);
@@ -64,7 +70,7 @@ export default function App() {
     try {
       const result = await api<Obj>("/api/auth/login", jsonBody({ username, password }), true);
       tokenStore.set(result.access_token); setMe(result);
-      setPage(result.permissions?.includes("summary:read_all") || result.permissions?.includes("summary:read_own") ? "overview" : result.permissions?.includes("user:manage") ? "users" : "invoices");
+      setPage(homePage(result));
     } catch(e) { setError(serverMsg(e)); }
     finally { setBusy(false); }
   };

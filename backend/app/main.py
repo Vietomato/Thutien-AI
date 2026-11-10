@@ -62,7 +62,11 @@ def health():
             "as_of_date": as_of_date().isoformat(), "app_db": app_db}
 
 
-# Serve the compiled React app when available; retain the previous static UI as a build fallback.
+# The React app must be built with `npm run build` before FastAPI can serve it.
 frontend_dist = ROOT / "frontend" / "dist"
-frontend_root = frontend_dist if (frontend_dist / "index.html").is_file() else ROOT / "frontend"
-app.mount("/app", StaticFiles(directory=frontend_root, html=True), name="frontend")
+if (frontend_dist / "index.html").is_file():
+    app.mount("/app", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+else:
+    @app.get("/app/")
+    def frontend_not_built():
+        return JSONResponse({"detail": "Build frontend first: cd frontend && npm ci && npm run build"}, status_code=503)

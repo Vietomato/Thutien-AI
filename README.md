@@ -93,6 +93,10 @@ Use the admin screen to create real accounts, link customers and change roles.
 
 Build the React + TypeScript + Tailwind frontend before starting FastAPI. FastAPI serves the compiled app at `/app/`.
 
+`frontend/index.html` is the Vite entry point; React renders the pages from `frontend/src/App.tsx` into its `#root` element.
+The frontend calls same-origin `/api` routes. Login returns a JWT, and the shared API client sends it as a Bearer token.
+`JWT_SECRET` belongs only in the backend environment; no API key is stored in frontend code.
+
     cd frontend
     npm ci
     npm run build
@@ -128,7 +132,7 @@ data is known. `test_odoo_integration.py` reads the real Odoo database and is sk
 - `backend/app/routes_*.py`: API (data, F3 priority, reminders, tasks, admin)
 - `backend/app/schema.sql`, `db.py`, `audit.py`, `drafts.py`, `tasks.py`: application database
 - `backend/tests/`: automated tests
-- `frontend/`: web app in plain HTML/CSS/JS, served at `/app/`
+- `frontend/`: React + TypeScript + Tailwind app, built with Vite and served at `/app/`
 - `fixtures/`, `scripts/gen_fixtures.py`, `scripts/seed_odoo.py`: demo data that is loaded into Odoo
 - `scripts/create_readonly_role.sql`, `init_app_db.sql`, `seed_users.py`: setup helpers
 

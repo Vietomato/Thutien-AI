@@ -3,9 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
 
-// Cấu hình Vite
-// - alias "@/..." trỏ vào thư mục src (import gọn: import { Button } from "@/components/ui/Button")
-// - Backend do nhóm kết nối sau: khai báo địa chỉ trong .env (VITE_API_BASE_URL), xem src/config/api.ts
+// Serve the built app under FastAPI's /app/ mount. In development, proxy API calls to FastAPI.
 export default defineConfig({
   base: "/app/",
   plugins: [react(), tailwindcss()],
