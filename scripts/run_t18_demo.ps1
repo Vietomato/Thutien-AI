@@ -159,6 +159,28 @@ if (($modelRows -join "`n") -notmatch $modelPattern) {
     Write-Host "Model $Model đã có trên máy."
 }
 
+function Find-FreePort([int]$PreferredPort) {
+    $lastPort = [Math]::Min($PreferredPort + 19, 65535)
+    for ($candidate = $PreferredPort; $candidate -le $lastPort; $candidate++) {
+        $listener = $null
+        $free = $false
+        try {
+            $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $candidate)
+            $listener.Start()
+            $free = $true
+        } catch [System.Net.Sockets.SocketException] {
+            $free = $false
+        } finally {
+            if ($listener) { $listener.Stop() }
+        }
+        if ($free) { return $candidate }
+    }
+    throw "Không tìm được cổng trống từ $PreferredPort đến $lastPort."
+}
+
+$chosenPort = Find-FreePort $Port
+if ($chosenPort -ne $Port) { Write-Host "Cổng $Port đã được dùng; chuyển sang cổng $chosenPort." }
+$Port = $chosenPort
 Write-Host "Mở http://127.0.0.1:$Port/app/ trong trình duyệt. Ctrl+C để dừng backend."
 & $venvPython -m uvicorn backend.app.main:app --host 127.0.0.1 --port $Port
 Check-Exit 'Backend'

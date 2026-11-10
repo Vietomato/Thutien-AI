@@ -35,7 +35,8 @@ PowerShell command from the repository root:
 
 The script starts PostgreSQL, Odoo and Ollama with Docker, creates the application DB roles and demo users
 if missing, downloads `qwen3:4b` once into a persistent Docker volume, installs app dependencies, builds
-the frontend, checks both databases and starts FastAPI at http://127.0.0.1:8001/app/. It creates a local
+the frontend, checks both databases and starts FastAPI at http://127.0.0.1:8001/app/ (or the next free port).
+It creates a local
 ignored `.env` with the development database passwords from the SQL setup scripts and a random JWT secret.
 If your database passwords differ, edit `.env` before running the script again. No separate Ollama
 installation or API key is needed. Odoo's first database and Invoicing app still need to be created in its UI.
