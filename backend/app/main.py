@@ -5,7 +5,7 @@ from .contracts import Invoice, Payment
 from app.auth import router as auth_router, require_roles
 from . import db, odoo_reader, prediction
 from .routes_f4 import router as f4_router
-from .sources import fixture as _fixture, load_invoices_and_payments
+from .sources import fixture as _fixture, load_invoices_and_payments, odoo
 
 app = FastAPI(title="ThuTien AI")
 app.include_router(auth_router)
@@ -30,7 +30,7 @@ def health():
 def invoices_open():
     if data_source() == "odoo":
         try:
-            items = odoo_reader.open_invoices()
+            items = odoo().open_invoices()
         except odoo_reader.OdooUnavailable as e:
             raise HTTPException(502, str(e))
     else:
@@ -51,7 +51,7 @@ def predictions():
 def payments_history():
     if data_source() == "odoo":
         try:
-            items = odoo_reader.payment_history()
+            items = odoo().payment_history()
         except odoo_reader.OdooUnavailable as e:
             raise HTTPException(502, str(e))
     else:
