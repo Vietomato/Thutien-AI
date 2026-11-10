@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from . import analytics, draft_generation, drafts, odoo_reader, users
-from .audit import append_audit
+from .audit import append_audit, list_draft_history
 from .auth import require_any_permission, require_permission
 from .config import as_of_date
 from .contracts import Invoice
@@ -28,13 +28,24 @@ def _checks(d: dict, inv: Invoice | None) -> list[dict]:
         return [{"label": "Hóa đơn không còn nợ trên Odoo", "ok": False}]
     amount_ok = inv.remaining_amount == d["amount"]
     due_ok = inv.due_date == date.fromisoformat(d["due_date"])
+    customer_ok = inv.customer_id == d["customer_id"] and inv.display_name == d["customer_name"]
+    email_ok = inv.contact_email == d["contact_email"]
+    version_ok = inv.source_version == d["source_version"]
     clean = inv.dispute_status == "none"
-    return [
+    checks = [
         {"label": f"Số tiền {drafts.vnd(d['amount'])}: " + ("khớp" if amount_ok else "không khớp"), "ok": amount_ok},
         {"label": f"Hạn trả {drafts.dmy(date.fromisoformat(d['due_date']))}: " + ("khớp" if due_ok else "không khớp"),
          "ok": due_ok},
         {"label": "Không tranh chấp" if clean else "Đang tranh chấp", "ok": clean},
     ]
+
+
+    checks.extend([
+        {"label": "Khách hàng: " + ("khớp" if customer_ok else "đã thay đổi"), "ok": customer_ok},
+        {"label": "Email liên hệ: " + ("khớp" if email_ok else "đã thay đổi"), "ok": email_ok},
+        {"label": "Phiên bản Odoo: " + ("khớp" if version_ok else "đã thay đổi"), "ok": version_ok},
+    ])
+    return checks
 
 
 def _with_checks(d: dict, invoices: dict[str, Invoice]) -> dict:
@@ -122,9 +133,17 @@ def get_draft(draft_id: int, user: dict = Depends(require_any_permission("draft:
     return _with_checks(d, {i.invoice_id: i for i in [odoo_reader.open_invoice(d["invoice_id"])] if i})
 
 
+@router.get("/drafts/{draft_id}/history")
+def draft_history(draft_id: int, user: dict = Depends(require_any_permission("draft:read_own", "draft:read_team"))):
+    _visible_or_404(draft_id, user)
+    return {"items": list_draft_history(draft_id)}
+
+
 @router.patch("/drafts/{draft_id}")
 def edit_draft(draft_id: int, body: EditDraft, user: dict = Depends(require_permission("draft:create"))):
     d = _visible_or_404(draft_id, user)
+    if d["created_by"] != user["id"]:
+        raise HTTPException(403, "only the draft author can edit it")
     if body.subject is None and body.body is None:
         raise HTTPException(422, "nothing to change")
     updated = drafts.update_text(d["id"], body.subject, body.body)
@@ -136,16 +155,16 @@ def edit_draft(draft_id: int, body: EditDraft, user: dict = Depends(require_perm
 
 def _decide(draft_id: int, status: str, note: str | None, user: dict) -> dict:
     d = _visible_or_404(draft_id, user)
+    if d["created_by"] == user["id"]:
+        raise HTTPException(403, "cannot decide your own draft")
     if d["status"] != "pending":
         raise HTTPException(409, f"draft is already {d['status']}")
     inv = odoo_reader.open_invoice(d["invoice_id"])
     if status == "approved" and not all(c["ok"] for c in _checks(d, inv)):
         raise HTTPException(409, "invoice data changed in Odoo since this draft was written; reject it and create a new one")
-    result = drafts.decide(d["id"], status, user["id"], note)
+    result = drafts.decide(d["id"], status, user["id"], user["username"], d["created_by_username"], note)
     if result is None:
         raise HTTPException(409, "draft was already decided")
-    append_audit(user["username"], "approve_draft" if status == "approved" else "reject_draft", d["invoice_id"],
-                 {"draft_id": d["id"], "drafted_by": d["created_by_username"], "note": note})
     return _with_checks(result, {i.invoice_id: i for i in [inv] if i})
 
 

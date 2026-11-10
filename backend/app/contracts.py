@@ -13,6 +13,8 @@ class Invoice(BaseModel):
     currency: Literal["VND"] = "VND"
     dispute_status: Literal["none", "disputed"] = "none"
     contact_email: Optional[str] = None
+    # Odoo account_move.write_date. Used to detect edits after a reminder draft was created.
+    source_version: Optional[str] = None
 
 
 class Payment(BaseModel):
