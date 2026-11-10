@@ -1,13 +1,7 @@
 """Admin: user management, role assignment, audit log. No financial data is reachable from here."""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-try:
-    from psycopg import errors as pg_errors
-except Exception:
-    class _Errors:
-        class UniqueViolation(Exception):
-            pass
-    pg_errors = _Errors()
+from psycopg import errors as pg_errors
 
 from . import odoo_reader, users
 from .audit import append_audit, list_audit

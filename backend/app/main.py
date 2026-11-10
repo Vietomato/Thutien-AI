@@ -1,19 +1,9 @@
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-# Load .env if present
-for _env_path in [Path(__file__).resolve().parents[2] / ".env", Path(__file__).resolve().parents[1] / ".env"]:
-    if _env_path.exists():
-        for _line in _env_path.read_text(encoding="utf-8").splitlines():
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                _k, _v = _line.split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
-
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db, odoo_reader
@@ -70,11 +60,6 @@ def health():
         app_db = "unavailable"
     return {"status": "ok" if app_db == "ok" else "degraded", "data_source": data_source(),
             "as_of_date": as_of_date().isoformat(), "app_db": app_db}
-
-
-@app.get("/")
-def root():
-    return RedirectResponse(url="/app/")
 
 
 # The React app must be built with `npm run build` before FastAPI can serve it.
