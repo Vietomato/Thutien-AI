@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS obligations (
     currency    TEXT NOT NULL DEFAULT 'VND' CHECK (currency = 'VND'),
     due_date    DATE NOT NULL,
     created_by  BIGINT NOT NULL REFERENCES users(id),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE obligations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS obligations_due_idx ON obligations (due_date);

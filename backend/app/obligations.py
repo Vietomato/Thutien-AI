@@ -5,13 +5,15 @@ created by schema.sql, like the other application tables."""
 from .db import connect
 
 _SELECT = ("SELECT o.id, o.description, o.amount, o.currency, o.due_date, o.created_by, u.username AS created_by_username, "
-           "o.created_at FROM obligations o JOIN users u ON u.id = o.created_by")
+           "o.created_at, o.updated_at FROM obligations o JOIN users u ON u.id = o.created_by")
 
 
 def _row(r: dict) -> dict:
     r = dict(r)
     r["due_date"] = r["due_date"].isoformat()
-    r["created_at"] = r["created_at"].isoformat()
+    for key in ("created_at", "updated_at"):
+        if r.get(key):
+            r[key] = r[key].isoformat()
     return r
 
 
@@ -34,3 +36,24 @@ def list_all() -> list[dict]:
     with connect() as conn:
         rows = conn.execute(f"{_SELECT} ORDER BY o.due_date, o.id").fetchall()
     return [_row(r) for r in rows]
+
+
+def update(obligation_id: int, description: str, amount: int, due_date) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "UPDATE obligations SET description = %s, amount = %s, due_date = %s, updated_at = now() "
+            "WHERE id = %s RETURNING id",
+            (description.strip(), amount, due_date, obligation_id),
+        ).fetchone()
+    return get(row["id"]) if row else None
+
+
+def delete(obligation_id: int) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "DELETE FROM obligations WHERE id = %s RETURNING id, description, amount, due_date",
+            (obligation_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {**row, "due_date": row["due_date"].isoformat()}

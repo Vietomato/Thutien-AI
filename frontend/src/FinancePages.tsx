@@ -77,6 +77,7 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
   const alerts: Row[] = forecast?.alerts ?? [];
   const items: Row[] = obligations?.items ?? [];
   const sources: Row = forecast?.obligations_sources ?? {};
@@ -87,8 +88,21 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid) return;
-    const ok = await act(() => api("/api/obligations", jsonBody({ description: description.trim(), amount: amountValue, due_date: dueDate })), "Đã lưu khoản chi dự kiến.");
-    if (ok) { setDescription(""); setAmount(""); setDueDate(""); }
+    const payload = { description: description.trim(), amount: amountValue, due_date: dueDate };
+    const ok = await act(() => editingId === null
+      ? api("/api/obligations", jsonBody(payload))
+      : api(`/api/obligations/${editingId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    editingId === null ? "Đã lưu khoản chi dự kiến." : "Đã cập nhật khoản chi.");
+    if (ok) { setDescription(""); setAmount(""); setDueDate(""); setEditingId(null); }
+  };
+  const startEdit = (item: Row) => {
+    setEditingId(Number(item.id)); setDescription(String(item.description));
+    setAmount(String(item.amount)); setDueDate(String(item.due_date));
+    document.getElementById("ob-description")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  const remove = (item: Row) => {
+    if (!window.confirm(`Xóa khoản chi “${item.description}” khỏi dự báo?`)) return;
+    void act(() => api(`/api/obligations/${item.id}`, { method: "DELETE" }), "Đã xóa khoản chi khỏi dự báo.");
   };
   return <>
     <Head title="Dự báo dòng tiền · F4" subtitle="Phân vị ngày trả được tính từ lịch sử thanh toán. Chi gồm hóa đơn nhà cung cấp trong Odoo và khoản kế toán nhập tay." right={<SourceBadge source={forecast?.source} />} />
@@ -101,18 +115,18 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
           <tbody>{alerts.map(a => <tr key={a.week_start}><td>{date(a.week_start)}</td><td className="num">{money(a.receipt_p75)}</td><td className="num">{money(a.obligations)}</td><td className="num">{money(a.gap_p75)}</td></tr>)}</tbody></table></div>}
     </section>
     {hasBeyond && <div className="chart-note"><span className="note">Ngoài 12 tuần: thu P25 {money(beyond.p25)}, P50 {money(beyond.p50)}, P75 {money(beyond.p75)}; chi {money(forecast?.obligations_out_of_horizon)}. Các khoản này không nằm trong biểu đồ.</span></div>}
-    {canEdit && <form className="card" onSubmit={submit}><h2>Nhập khoản chi dự kiến</h2>
+    {canEdit && <form className="card" onSubmit={submit}><h2>{editingId === null ? "Nhập khoản chi dự kiến" : "Sửa khoản chi dự kiến"}</h2>
       <div className="form-grid">
         <div className="field"><label htmlFor="ob-description">Nội dung</label><input id="ob-description" className="input" value={description} onChange={e => setDescription(e.target.value)} maxLength={200} placeholder="Ví dụ: Tiền thuê văn phòng" required /></div>
         <div className="field"><label htmlFor="ob-amount">Số tiền (VND)</label><input id="ob-amount" className="input" type="number" min={1} step={1} inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)} placeholder="30000000" required /></div>
         <div className="field"><label htmlFor="ob-date">Ngày chi</label><input id="ob-date" className="input" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required /></div>
       </div>
-      <div><button className="btn" style={{ padding: "0 18px" }} disabled={!valid}>Thêm khoản chi</button></div></form>}
+      <div className="form-actions"><button className="btn" style={{ padding: "0 18px" }} disabled={!valid}>{editingId === null ? "Thêm khoản chi" : "Lưu thay đổi"}</button>{editingId !== null && <button className="btn btn-secondary" type="button" onClick={() => { setEditingId(null); setDescription(""); setAmount(""); setDueDate(""); }}>Hủy sửa</button>}</div></form>}
     <section className="panel">
       <div className="panel-head"><h2>Khoản chi kế toán đã nhập</h2><span className="note">Nhập tay, chưa đọc từ Odoo</span></div>
       {items.length === 0 ? <div className="empty">Chưa có khoản chi nhập tay nào.</div>
-        : <div className="table-scroll"><table className="table"><thead><tr><th>Ngày chi</th><th>Nội dung</th><th className="num">Số tiền</th><th>Người nhập</th></tr></thead>
-          <tbody>{items.map(o => <tr key={o.id}><td>{date(o.due_date)}</td><td>{o.description}</td><td className="num">{money(o.amount)}</td><td>{o.created_by_username}</td></tr>)}</tbody></table></div>}
+        : <div className="table-scroll"><table className="table"><thead><tr><th>Ngày chi</th><th>Nội dung</th><th className="num">Số tiền</th><th>Người nhập</th>{canEdit && <th>Thao tác</th>}</tr></thead>
+          <tbody>{items.map(o => <tr key={o.id}><td>{date(o.due_date)}</td><td>{o.description}</td><td className="num">{money(o.amount)}</td><td>{o.created_by_username}</td>{canEdit && <td><div className="form-actions"><button className="btn btn-secondary btn-compact" type="button" onClick={() => startEdit(o)}>Sửa</button><button className="btn btn-secondary btn-compact" type="button" onClick={() => remove(o)}>Xóa</button></div></td>}</tr>)}</tbody></table></div>}
     </section>
     <div className="table-card table-scroll"><table className="table"><thead><tr><th>Tuần</th><th className="num">P25</th><th className="num">P50</th><th className="num">P75</th><th className="num">Chi</th><th className="num">Thiếu theo P75</th></tr></thead><tbody>{(forecast?.weeks ?? []).map((w: Row) => <tr key={w.week_start}><td>{date(w.week_start)}</td><td className="num">{money(w.receipt_p25)}</td><td className="num">{money(w.receipt_p50)}</td><td className="num">{money(w.receipt_p75)}</td><td className="num">{money(w.obligations)}</td><td className="num">{money(w.gap_p75)}</td></tr>)}</tbody></table></div>
   </>;

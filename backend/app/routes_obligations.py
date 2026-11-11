@@ -2,7 +2,7 @@
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from . import obligations
@@ -31,3 +31,23 @@ def add_obligation(body: ObligationIn, user: dict = Depends(require_permission("
     append_audit(user["username"], "obligation_created", f"obligation:{record['id']}",
                  {"amount": record["amount"], "due_date": record["due_date"]})
     return record
+
+
+@router.patch("/obligations/{obligation_id}")
+def edit_obligation(obligation_id: int, body: ObligationIn,
+                    user: dict = Depends(require_permission("obligation:write"))):
+    record = obligations.update(obligation_id, body.description, body.amount, body.due_date)
+    if record is None:
+        raise HTTPException(404, "obligation not found")
+    append_audit(user["username"], "obligation_updated", f"obligation:{obligation_id}",
+                 {"amount": record["amount"], "due_date": record["due_date"]})
+    return record
+
+
+@router.delete("/obligations/{obligation_id}")
+def remove_obligation(obligation_id: int, user: dict = Depends(require_permission("obligation:write"))):
+    record = obligations.delete(obligation_id)
+    if record is None:
+        raise HTTPException(404, "obligation not found")
+    append_audit(user["username"], "obligation_deleted", f"obligation:{obligation_id}", record)
+    return {"deleted": True, "id": obligation_id}
