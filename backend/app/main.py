@@ -1,48 +1,89 @@
-import json
+import logging
+import os
+from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Depends
+
+# Load .env if present
+for _env_path in [Path(__file__).resolve().parents[2] / ".env", Path(__file__).resolve().parents[1] / ".env"]:
+    if _env_path.exists():
+        for _line in _env_path.read_text(encoding="utf-8").splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+
+from . import db, odoo_reader
+from .auth import router as auth_router
 from .config import as_of_date, data_source
-from .contracts import Invoice, Payment
-from app.auth import router as auth_router, require_roles
-from . import odoo_reader
+from .routes_admin import router as admin_router
+from .routes_data import router as data_router
+from .routes_f3 import router as f3_router
+from .routes_obligations import router as obligations_router
+from .routes_reminders import router as reminders_router
+from .routes_tasks import router as tasks_router
 
-FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
-app = FastAPI(title="ThuTien AI")
+log = logging.getLogger("thutien")
+ROOT = Path(__file__).resolve().parents[2]
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    try:
+        db.init_schema()
+    except db.AppDbUnavailable as e:
+        # Keep the server up so /health explains the problem; data endpoints answer 503 until the DB is back.
+        log.error("app database not ready: %s", e)
+    yield
+
+
+app = FastAPI(title="ThuTien AI", lifespan=lifespan)
 app.include_router(auth_router)
+app.include_router(data_router)
+app.include_router(f3_router)
+app.include_router(obligations_router)
+app.include_router(reminders_router)
+app.include_router(tasks_router)
+app.include_router(admin_router)
 
 
-def _fixture(name: str) -> list[dict]:
-    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+@app.exception_handler(odoo_reader.OdooUnavailable)
+async def _odoo_down(_: Request, exc: odoo_reader.OdooUnavailable):
+    log.error("%s", exc)
+    return JSONResponse({"detail": "Odoo database unavailable"}, status_code=502)
 
 
-def _envelope(items):
-    return {"source": data_source(), "as_of_date": as_of_date().isoformat(), "items": items}
+@app.exception_handler(db.AppDbUnavailable)
+async def _app_db_down(_: Request, exc: db.AppDbUnavailable):
+    log.error("%s", exc)
+    return JSONResponse({"detail": "application database unavailable"}, status_code=503)
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "data_source": data_source(), "as_of_date": as_of_date().isoformat()}
+    try:
+        with db.connect() as conn:
+            conn.execute("SELECT 1")
+        app_db = "ok"
+    except db.AppDbUnavailable:
+        app_db = "unavailable"
+    return {"status": "ok" if app_db == "ok" else "degraded", "data_source": data_source(),
+            "as_of_date": as_of_date().isoformat(), "app_db": app_db}
 
 
-@app.get("/api/invoices/open", dependencies=[Depends(require_roles("accountant", "manager"))])
-def invoices_open():
-    if data_source() == "odoo":
-        try:
-            items = odoo_reader.open_invoices()
-        except odoo_reader.OdooUnavailable as e:
-            raise HTTPException(502, str(e))
-    else:
-        items = [Invoice(**x) for x in _fixture("invoices.json") if x["remaining_amount"] > 0]
-    return _envelope([i.model_dump(mode="json") for i in items])
+@app.get("/")
+def root():
+    return RedirectResponse(url="/app/")
 
 
-@app.get("/api/payments/history", dependencies=[Depends(require_roles("accountant", "manager"))])
-def payments_history():
-    if data_source() == "odoo":
-        try:
-            items = odoo_reader.payment_history()
-        except odoo_reader.OdooUnavailable as e:
-            raise HTTPException(502, str(e))
-    else:
-        items = [Payment(**x) for x in _fixture("payments.json")]
-    return _envelope([p.model_dump(mode="json") for p in items])
+# The React app must be built with `npm run build` before FastAPI can serve it.
+frontend_dist = ROOT / "frontend" / "dist"
+if (frontend_dist / "index.html").is_file():
+    app.mount("/app", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+else:
+    @app.get("/app/")
+    def frontend_not_built():
+        return JSONResponse({"detail": "Build frontend first: cd frontend && npm ci && npm run build"}, status_code=503)
