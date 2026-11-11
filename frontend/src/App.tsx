@@ -66,7 +66,13 @@ export default function App() {
     if (p.has("task:read_team")) jobs.team = api("/api/team");
     if (p.has("user:manage")) { jobs.users = api("/api/admin/users"); jobs.customers = api("/api/admin/customers"); }
     if (p.has("audit:read")) jobs.audit = api("/api/admin/audit?limit=100");
-    const results = await Promise.all(Object.entries(jobs).map(async ([name, task]) => ({ name, result: await task.then(value => ({ value }), error => ({ error })) })));
+    const results = await Promise.all(Object.entries(jobs).map(async ([name, task]) => {
+      const result = await task.then(value => ({ value }), error => ({ error }));
+      if (current === requestId.current && "value" in result) {
+        setData(previous => ({ ...previous, [name]: result.value }));
+      }
+      return { name, result };
+    }));
     if (current !== requestId.current) return;
     const next: Row = {};
     const failed: string[] = [];
