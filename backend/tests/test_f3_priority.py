@@ -91,6 +91,7 @@ def test_paid_delay_history_is_cut_off_at_as_of_date(monkeypatch):
         calls["params"] = params
         return [("C001", 4)]
 
+    monkeypatch.setattr(odoo_reader, "is_xmlrpc_mode", lambda: False)  # test the PostgreSQL path even if .env has ODOO_URL
     monkeypatch.setattr(odoo_reader, "_query", fake_query)
     assert odoo_reader.paid_delays(AS_OF) == [("C001", 4)]
     assert "max(pr.max_date)::date - m.invoice_date_due" in calls["sql"]

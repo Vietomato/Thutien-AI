@@ -1,0 +1,186 @@
+{
+ "as_of": "2026-11-09",
+ "currency": "VND",
+ "opening_cash": 690000000,
+ "min_reserve": 100000000,
+ "overdraft_limit": 200000000,
+ "headcount": 22,
+ "monthly_payroll_net": 180000000,
+ "loan_outstanding": 3000000000,
+ "loan_rate_pct_year": 9.5,
+ "note": "Số dư và hạn mức là giả định cho demo",
+ "preview_late": [
+  [
+   "2026-11-09",
+   1231884200
+  ],
+  [
+   "2026-11-16",
+   -574819800
+  ],
+  [
+   "2026-11-23",
+   -729547200
+  ],
+  [
+   "2026-11-30",
+   725603300
+  ],
+  [
+   "2026-12-07",
+   45541200
+  ],
+  [
+   "2026-12-14",
+   513004000
+  ],
+  [
+   "2026-12-21",
+   868556300
+  ],
+  [
+   "2026-12-28",
+   916193000
+  ]
+ ],
+ "preview_on_time": [
+  [
+   "2026-11-09",
+   1240834400
+  ],
+  [
+   "2026-11-16",
+   811860600
+  ],
+  [
+   "2026-11-23",
+   657133200
+  ],
+  [
+   "2026-11-30",
+   783648000
+  ],
+  [
+   "2026-12-07",
+   103585900
+  ],
+  [
+   "2026-12-14",
+   513004000
+  ],
+  [
+   "2026-12-21",
+   868556300
+  ],
+  [
+   "2026-12-28",
+   916193000
+  ]
+ ],
+ "suppliers": [
+  {
+   "supplier_id": "S001",
+   "name": "Công ty CP Thép Đại Nam",
+   "terms_days": 30,
+   "strategic": true,
+   "late_fee_pct_month": 1.5,
+   "stops_supply_if_late": true
+  },
+  {
+   "supplier_id": "S002",
+   "name": "Công ty TNHH Xi măng Thiên Phú",
+   "terms_days": 15,
+   "strategic": true,
+   "late_fee_pct_month": 1.5,
+   "stops_supply_if_late": true
+  },
+  {
+   "supplier_id": "S003",
+   "name": "Công ty TNHH Vật liệu Xây dựng Phú Gia",
+   "terms_days": 7,
+   "strategic": false,
+   "late_fee_pct_month": 1.0,
+   "stops_supply_if_late": false
+  },
+  {
+   "supplier_id": "S004",
+   "name": "Công ty TNHH Sơn Tân Lộc",
+   "terms_days": 30,
+   "strategic": false,
+   "late_fee_pct_month": 1.0,
+   "stops_supply_if_late": false
+  },
+  {
+   "supplier_id": "S005",
+   "name": "Công ty CP Gạch ốp lát Đại Việt",
+   "terms_days": 30,
+   "strategic": false,
+   "late_fee_pct_month": 1.0,
+   "stops_supply_if_late": false
+  },
+  {
+   "supplier_id": "S006",
+   "name": "Công ty TNHH Thạch cao Hồng Phát",
+   "terms_days": 30,
+   "strategic": false,
+   "late_fee_pct_month": 1.0,
+   "stops_supply_if_late": false
+  },
+  {
+   "supplier_id": "S007",
+   "name": "Công ty CP Nhựa ống Phương Đông",
+   "terms_days": 30,
+   "strategic": false,
+   "late_fee_pct_month": 1.0,
+   "stops_supply_if_late": false
+  },
+  {
+   "supplier_id": "S008",
+   "name": "Công ty TNHH Thiết bị vệ sinh Hoàng Long",
+   "terms_days": 45,
+   "strategic": false,
+   "late_fee_pct_month": 1.0,
+   "stops_supply_if_late": false
+  },
+  {
+   "supplier_id": "S009",
+   "name": "Công ty CP Dây cáp điện Việt Cường",
+   "terms_days": 30,
+   "strategic": true,
+   "late_fee_pct_month": 1.5,
+   "stops_supply_if_late": true
+  },
+  {
+   "supplier_id": "S010",
+   "name": "Công ty TNHH Thiết bị điện Minh Quang",
+   "terms_days": 45,
+   "strategic": false,
+   "late_fee_pct_month": 1.0,
+   "stops_supply_if_late": false
+  },
+  {
+   "supplier_id": "S011",
+   "name": "Công ty TNHH Nhôm kính Tân Hưng",
+   "terms_days": 30,
+   "strategic": false,
+   "late_fee_pct_month": 1.0,
+   "stops_supply_if_late": false
+  },
+  {
+   "supplier_id": "S012",
+   "name": "Công ty TNHH Bảo hộ lao động An Toàn",
+   "terms_days": 15,
+   "strategic": false,
+   "late_fee_pct_month": 1.0,
+   "stops_supply_if_late": false
+  },
+  {
+   "supplier_id": "S013",
+   "name": "Công ty TNHH Vận tải Hà Phát",
+   "terms_days": 15,
+   "strategic": false,
+   "late_fee_pct_month": 0.5,
+   "stops_supply_if_late": false
+  }
+ ]
+}

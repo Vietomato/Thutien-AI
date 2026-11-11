@@ -4,4 +4,5 @@ pydantic
 pytest
 httpx2
 psycopg[binary]
+pg8000
 pyjwt

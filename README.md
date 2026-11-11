@@ -6,7 +6,8 @@ The system is read-only on Odoo: nothing is ever written to it.
 
 ## How the data is organised
 
-- **Odoo database** (read-only): customers, invoices, payments, supplier bills. Every business number comes from here.
+- **Odoo** (read-only): customers, invoices, payments, supplier bills. Every business number comes from here.
+  The backend reads it either through the Odoo XML-RPC API (Odoo.com, API key) or directly from Odoo's PostgreSQL.
 - **Application database** (`thutien_app`, PostgreSQL): users and roles, reminder drafts, collection tasks, audit log.
 - Predictions and the 12-week cash forecast are computed from Odoo's real payment history
   (`backend/app/analytics.py`). There is no mock or fixture data at runtime.
@@ -48,14 +49,32 @@ will or will not be paid.
     .venv\Scripts\activate
     pip install -r backend/requirements.txt
 
-### 1. Databases (Docker)
+### 1. Connect Odoo (choose one)
+
+**Mode 1: Odoo.com or any Odoo over XML-RPC (recommended, no Docker for Odoo).**
+
+1. In Odoo open My Profile -> Account Security -> New API Key and copy the key. The Invoicing app must be installed.
+2. Put `ODOO_URL`, `ODOO_DB`, `ODOO_EMAIL` and `ODOO_API_KEY` in `.env` (see `.env.example`).
+3. Optional, demo database only: load the demo company into Odoo. These scripts WRITE to Odoo:
+
+        python scripts/seed_odoo_fast.py --limit 20     # try a few invoices first
+        python scripts/seed_odoo_fast.py                # load everything
+        python scripts/seed_odoo_fast.py --delay 1.0    # slow down if Odoo.com answers HTTP 429
+
+   `scripts/reset_demo_odoo.py` and `scripts/clear_odoo.py` remove demo data again. Never run them on a real company.
+
+Odoo.com rate-limits API calls (HTTP 429). The backend serializes its calls, caches reads for 30 seconds
+and retries with a short backoff, so the dashboard does not hammer Odoo. If a page still shows no data, wait a minute
+and press "Tải lại dữ liệu".
+
+**Mode 2: self-hosted Odoo in Docker, read directly from PostgreSQL.**
 
 Port 5432 is often taken by a local PostgreSQL, so the compose file maps Postgres to port 5433.
 
     docker compose up -d
 
 1. Open http://localhost:8069, create a database named `odoo`, install the Invoicing app.
-2. Load the demo invoices into Odoo (the setup account is only used by this script):
+2. Load the demo invoices (the setup account is only used by this script):
 
         $env:ODOO_SETUP_USER="<your Odoo login>"
         $env:ODOO_SETUP_PASSWORD="<your Odoo password>"
@@ -65,19 +84,24 @@ Port 5432 is often taken by a local PostgreSQL, so the compose file maps Postgre
 
         Get-Content scripts/create_readonly_role.sql | docker compose exec -T db psql -U odoo -d odoo
 
-4. Create the application database and role (run once):
+Leave `ODOO_URL` and `ODOO_API_KEY` empty in this mode and set the `ODOO_DB_*` / `ODOO_RO_*` variables.
+
+### 2. Application database and environment
+
+The application database (`thutien_app`) holds users, drafts, tasks and the audit log. Choose one:
+
+- **Hosted Postgres (Neon, Supabase), no Docker:** set `APP_DB_URL=postgresql://user:password@host:5432/db?sslmode=require`.
+  It takes priority over the host/port variables. Tables are created on first start.
+- **Local Docker Postgres:** run `docker compose up -d`, then create the database and role once:
 
         Get-Content scripts/init_app_db.sql | docker compose exec -T db psql -U odoo -d postgres
 
-### 2. Environment
+Copy `.env.example` to `.env` (ignored by git) and fill it in. The backend reads `.env` from the project root
+(or `backend/.env`). Variables already set in your terminal win over the file.
 
-Set these in your terminal, or keep them in `.env` (ignored by git). See `.env.example` for all names.
-
-    $env:APP_DB_PASSWORD="change-me"
-    $env:ODOO_DB_PORT="5433"; $env:ODOO_RO_USER="thutien_ro"; $env:ODOO_RO_PASSWORD="change-me"
     $env:JWT_SECRET="<a long random string>"
 
-Never commit real passwords.
+Never commit real passwords or API keys.
 
 ### 3. Demo accounts
 
@@ -109,14 +133,13 @@ The frontend calls same-origin `/api` routes. Login returns a JWT, and the share
 - API docs: http://localhost:8000/docs
 - Health: http://localhost:8000/health (shows whether the application database is reachable)
 
-If Odoo is unreachable the API returns 502; if the application database is unreachable it returns 503.
+If Odoo is unreachable (or keeps answering 429) the API returns 502; if the application database is unreachable it returns 503.
 It never falls back to made-up data.
 
 ## Tests
 
     cd backend
     $env:APP_DB_PASSWORD="change-me"
-    $env:ODOO_DB_PORT="5433"; $env:ODOO_RO_USER="thutien_ro"; $env:ODOO_RO_PASSWORD="change-me"
     python -m pytest -q
 
 API tests use the `thutien_test` database (created by `init_app_db.sql`; its tables are emptied between tests)
@@ -127,13 +150,14 @@ data is known. `test_odoo_integration.py` reads the real Odoo database and is sk
 
 - `backend/app/permissions.py`: roles and the permission matrix
 - `backend/app/auth.py`, `users.py`, `security.py`: login, registration, lockout, password hashing
-- `backend/app/odoo_reader.py`: read-only queries on Odoo
+- `backend/app/odoo_reader.py`: read-only access to Odoo (XML-RPC with lock, cache and 429 retry, or PostgreSQL)
 - `backend/app/analytics.py`: predictions, forecast, summary (pure functions)
 - `backend/app/routes_*.py`: API (data, F3 priority, reminders, tasks, admin)
 - `backend/app/schema.sql`, `db.py`, `audit.py`, `drafts.py`, `tasks.py`: application database
 - `backend/tests/`: automated tests
 - `frontend/`: React + TypeScript + Tailwind app, built with Vite and served at `/app/`
-- `fixtures/`, `scripts/gen_fixtures.py`, `scripts/seed_odoo.py`: demo data that is loaded into Odoo
+- `fixtures/`, `scripts/gen_fixtures.py`, `scripts/gen_demo_company.py`: demo data
+- `scripts/seed_odoo.py`, `seed_odoo_fast.py`, `reset_demo_odoo.py`, `clear_odoo.py`: load or remove demo data in Odoo (they write; demo database only)
 - `scripts/create_readonly_role.sql`, `init_app_db.sql`, `seed_users.py`: setup helpers
 
 ## Supplier bills and the cash forecast
