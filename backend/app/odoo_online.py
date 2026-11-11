@@ -21,7 +21,8 @@ class OdooOnlineError(Exception):
     pass
 
 
-_PAGE_SIZE = 200
+_PAGE_SIZE = 2000
+_MAX_RECORDS = 20_000
 _CACHE: dict[str, tuple[float, object]] = {}
 _CACHE_LOCK = threading.RLock()
 
@@ -50,23 +51,27 @@ def _call(model: str, method: str, **params):
         headers["X-Odoo-Database"] = database
     request = Request(f"{url}/json/2/{model}/{method}",
                       data=json.dumps(params).encode("utf-8"), headers=headers, method="POST")
-    try:
-        with urlopen(request, timeout=20) as response:
-            return json.load(response)
-    except HTTPError as exc:
-        # Odoo may echo request details in its error body. Never forward that body.
-        if exc.code == 401:
-            raise OdooOnlineError("Odoo Online rejected the API key (HTTP 401); create a new key in this Odoo database") from None
-        if exc.code == 403:
-            raise OdooOnlineError("Odoo Online denied API access (HTTP 403); check the Custom plan and user rights") from None
-        raise OdooOnlineError(f"Odoo Online API failed (HTTP {exc.code})") from None
-    except (URLError, TimeoutError, ValueError) as exc:
-        raise OdooOnlineError("Odoo Online API is unavailable or returned invalid JSON") from None
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=20) as response:
+                return json.load(response)
+        except HTTPError as exc:
+            # Odoo may echo request details in its error body. Never forward that body.
+            if exc.code == 401:
+                raise OdooOnlineError("Odoo Online rejected the API key (HTTP 401); create a new key in this Odoo database") from None
+            if exc.code == 403:
+                raise OdooOnlineError("Odoo Online denied API access (HTTP 403); check the Custom plan and user rights") from None
+            if exc.code not in (429, 502, 503, 504) or attempt == 2:
+                raise OdooOnlineError(f"Odoo Online API failed (HTTP {exc.code})") from None
+        except (URLError, TimeoutError, ValueError):
+            if attempt == 2:
+                raise OdooOnlineError("Odoo Online API is unavailable or returned invalid JSON") from None
+        time.sleep(0.5 * (attempt + 1))
 
 
 def _search_read(model: str, domain: list, fields: list[str]) -> list[dict]:
     rows: list[dict] = []
-    for page in range(100):
+    for page in range(_MAX_RECORDS // _PAGE_SIZE):
         batch = _call(model, "search_read", domain=domain, fields=fields,
                       offset=page * _PAGE_SIZE, limit=_PAGE_SIZE, order="id")
         if not isinstance(batch, list) or any(not isinstance(item, dict) for item in batch):

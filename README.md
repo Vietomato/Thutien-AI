@@ -24,6 +24,9 @@ ODOO_ONLINE_API_KEY=<your Odoo API key>
 # ODOO_ONLINE_DISPUTE_FIELD=x_studio_dispute_status
 ```
 
+Paste only the key value after `ODOO_ONLINE_API_KEY=`. Do not add another
+`ODOO_API_KEY=` prefix inside the value.
+
 Create the key in Odoo: **Preferences / My Profile → Account Security → New API
 Key**. The Odoo user needs read access to invoices, partners, currencies,
 invoice lines and payment reconciliations. Run from the repository root:

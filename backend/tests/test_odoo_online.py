@@ -41,6 +41,21 @@ def test_http_error_does_not_disclose_key_or_odoo_response(monkeypatch, status, 
     assert expected in str(exc.value)
 
 
+def test_transient_timeout_retries_read_only_call(monkeypatch):
+    calls = []
+
+    def flaky(request, timeout):
+        calls.append(request.full_url)
+        if len(calls) == 1:
+            raise TimeoutError("temporary network timeout")
+        return BytesIO(b"[]")
+
+    monkeypatch.setattr(odoo_online, "urlopen", flaky)
+    monkeypatch.setattr(odoo_online.time, "sleep", lambda _: None)
+    assert odoo_online._call("account.move", "search_read", domain=[], fields=["id"]) == []
+    assert len(calls) == 2
+
+
 def test_open_invoices_map_odoo_name_partner_and_version(monkeypatch):
     moves = [
         {"id": 10, "name": "INV/2026/001", "ref": False, "partner_id": [7, "Khách A"],
