@@ -42,6 +42,7 @@ export default function App() {
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const requestId = useRef(0);
+  const actionInFlight = useRef(false);
 
   const notify = (message: string) => {
     setToast(message);
@@ -65,7 +66,13 @@ export default function App() {
     if (p.has("task:read_team")) jobs.team = api("/api/team");
     if (p.has("user:manage")) { jobs.users = api("/api/admin/users"); jobs.customers = api("/api/admin/customers"); }
     if (p.has("audit:read")) jobs.audit = api("/api/admin/audit?limit=100");
-    const results = await Promise.all(Object.entries(jobs).map(async ([name, task]) => ({ name, result: await task.then(value => ({ value }), error => ({ error })) })));
+    const results = await Promise.all(Object.entries(jobs).map(async ([name, task]) => {
+      const result = await task.then(value => ({ value }), error => ({ error }));
+      if (current === requestId.current && "value" in result) {
+        setData(previous => ({ ...previous, [name]: result.value }));
+      }
+      return { name, result };
+    }));
     if (current !== requestId.current) return;
     const next: Row = {};
     const failed: string[] = [];
@@ -95,10 +102,12 @@ export default function App() {
   const refresh = () => { if (me) void load(me); };
 
   const act: Action = async (job, message) => {
-    if (!me) return false;
+    if (!me || actionInFlight.current) return false;
+    actionInFlight.current = true;
     setBusy(true); setDataError("");
     try { await job(); notify(message); await load(me); return true; }
-    catch (error) { setDataError(errorMessage(error)); setBusy(false); return false; }
+    catch (error) { setDataError(errorMessage(error)); return false; }
+    finally { actionInFlight.current = false; setBusy(false); }
   };
 
   async function submitAuth(event: React.FormEvent) {
@@ -111,7 +120,7 @@ export default function App() {
         const profile = await api<Profile & { access_token: string }>("/api/auth/login", jsonBody({ username: username.trim(), password }), true);
         tokenStore.set(profile.access_token);
         setMe(profile); setPage(initialPage(profile)); setData({}); setPassword("");
-        void load(profile);
+        await load(profile);
       }
     } catch (error) { setAuthError(errorMessage(error)); }
     finally { setBusy(false); }
@@ -149,7 +158,7 @@ export default function App() {
     { id: "audit", label: "Nhật ký", visible: can("audit:read") },
   ];
   return <div className="app"><aside className="sidebar"><div className="side-brand"><span className="brand-mark">✓</span><span>ThuTiền AI</span></div><nav className="side-nav" aria-label="Điều hướng chính">{nav.filter(x => x.visible).map(x => <button className="nav-link" key={x.id} aria-current={page === x.id ? "page" : undefined} onClick={() => navigate(x.id)}>{x.label}</button>)}</nav><div className="acct"><button className="acct-trigger" aria-expanded={accountOpen} onClick={() => setAccountOpen(v => !v)}><span className="avatar">{me.full_name.slice(0, 1).toUpperCase()}</span><span className="acct-text"><span className="acct-text-name">{me.full_name}</span><span className="acct-text-role">{roleName(me.role)}</span></span></button>{accountOpen && <div className="acct-menu"><div className="acct-head"><span className="acct-name">{me.full_name}</span><span className="acct-sub">@{me.username} · {roleName(me.role)}</span></div><div className="acct-items"><button className="acct-item" onClick={() => { setPasswordOpen(true); setAccountOpen(false); }}>Đổi mật khẩu</button><button className="acct-item acct-logout" onClick={logout}>Đăng xuất / đổi vai trò</button></div></div>}<button className="logout-btn" onClick={logout}>Đăng xuất</button></div></aside>
-    <main className="content">{dataError && <div className="alert alert-danger inline-alert" role="alert"><span>{dataError}</span><button aria-label="Đóng thông báo" onClick={() => setDataError("")}>×</button></div>}{busy && <div className="loading">Đang đồng bộ dữ liệu…</div>}{page === "overview" && <Overview data={data} onNavigate={navigate} />}{page === "invoices" && <Invoices data={data} isStaff={can("invoice:read_all")} canDraft={can("draft:create")} canAssign={can("task:assign")} onDrafts={() => navigate("drafts")} onTasks={() => navigate("tasks")} act={act} />}{page === "forecast" && <ForecastPage forecast={data.forecast} obligations={data.obligations} canEdit={can("obligation:write")} act={act} />}{page === "drafts" && <Reminders data={data} canCreate={can("draft:create")} canDecide={can("draft:decide")} act={act} />}{page === "tasks" && <Tasks data={data} canAssign={can("task:assign")} act={act} />}{page === "payments" && <Customers data={data} />}{page === "users" && <AdminUsers data={data} act={act} />}{page === "audit" && <Audit data={data} />}<div className="form-actions"><button className="btn btn-secondary btn-compact" onClick={refresh} disabled={busy}>Tải lại dữ liệu</button><span className="micro">Mọi số liệu Odoo được đọc lại khi tải trang hoặc bấm nút này.</span></div></main>
+    <main className="content">{dataError && <div className="alert alert-danger inline-alert" role="alert"><span>{dataError}</span><button aria-label="Đóng thông báo" onClick={() => setDataError("")}>×</button></div>}{busy && <div className="loading">Đang đồng bộ dữ liệu…</div>}{page === "overview" && <Overview data={data} onNavigate={navigate} />}{page === "invoices" && <Invoices data={data} isStaff={can("invoice:read_all")} canDraft={can("draft:create")} canAssign={can("task:assign")} onDrafts={() => navigate("drafts")} onTasks={() => navigate("tasks")} act={act} />}{page === "forecast" && <ForecastPage forecast={data.forecast} obligations={data.obligations} canEdit={can("obligation:write")} act={act} />}{page === "drafts" && <Reminders data={data} viewerId={me.id} canCreate={can("draft:create")} canDecide={can("draft:decide")} act={act} />}{page === "tasks" && <Tasks data={data} canAssign={can("task:assign")} act={act} />}{page === "payments" && <Customers data={data} />}{page === "users" && <AdminUsers data={data} act={act} />}{page === "audit" && <Audit data={data} />}<div className="form-actions"><button className="btn btn-secondary btn-compact" onClick={refresh} disabled={busy}>Tải lại dữ liệu</button><span className="micro">Mọi số liệu Odoo được đọc lại khi tải trang hoặc bấm nút này.</span></div></main>
     {passwordOpen && <div className="modal-backdrop"><form className="auth-card modal-card" onSubmit={changePassword}><h2>Đổi mật khẩu</h2><div className="field"><label>Mật khẩu hiện tại</label><input className="input" type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} required /></div><div className="field"><label>Mật khẩu mới</label><input className="input" type="password" minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} required /></div><div className="form-actions"><button className="btn" disabled={busy}>Lưu mật khẩu</button><button className="btn btn-secondary" type="button" onClick={() => setPasswordOpen(false)}>Hủy</button></div></form></div>}
     {toast && <div className="toast">✓ {toast}</div>}
   </div>;

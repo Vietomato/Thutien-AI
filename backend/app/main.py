@@ -53,7 +53,7 @@ app.include_router(admin_router)
 @app.exception_handler(odoo_reader.OdooUnavailable)
 async def _odoo_down(_: Request, exc: odoo_reader.OdooUnavailable):
     log.error("%s", exc)
-    return JSONResponse({"detail": "Odoo database unavailable"}, status_code=502)
+    return JSONResponse({"detail": "Odoo data source unavailable"}, status_code=502)
 
 
 @app.exception_handler(db.AppDbUnavailable)

@@ -1,4 +1,4 @@
-"""Reminder drafts: text template and storage (app database).
+"""Reminder drafts: deterministic fallback text and application database storage.
 
 The text is built from real invoice fields by a fixed template; numbers are never free-typed.
 Approving a draft only records the decision. This app has no email sender, so nothing is delivered."""
@@ -12,12 +12,13 @@ except Exception:
             pass
     pg_errors = _Errors()
 
+from .audit import append_audit
 from .contracts import Invoice
 from .db import connect
 
 _COLUMNS = (
     "d.id, d.invoice_id, d.customer_id, d.customer_name, d.contact_email, d.amount, d.due_date, d.overdue_days, "
-    "d.subject, d.body, d.status, d.created_by, cu.username AS created_by_username, d.created_at, "
+    "d.source_version, d.subject, d.body, d.generation_source, d.status, d.created_by, cu.username AS created_by_username, d.created_at, "
     "d.decided_by, du.username AS decided_by_username, d.decided_at, d.decision_note"
 )
 _FROM = ("FROM reminder_drafts d JOIN users cu ON cu.id = d.created_by "
@@ -57,14 +58,16 @@ def _row(r: dict) -> dict:
     return r
 
 
-def create(inv: Invoice, overdue_days: int, subject: str, body: str, created_by: int) -> dict:
+def create(inv: Invoice, overdue_days: int, subject: str, body: str, created_by: int,
+           generation_source: str = "template_fallback") -> dict:
     try:
         with connect() as conn:
             new_id = conn.execute(
                 "INSERT INTO reminder_drafts (invoice_id, customer_id, customer_name, contact_email, amount, due_date, "
-                "overdue_days, subject, body, created_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                "overdue_days, source_version, subject, body, created_by, generation_source) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
                 (inv.invoice_id, inv.customer_id, inv.display_name, inv.contact_email, inv.remaining_amount,
-                 inv.due_date, overdue_days, subject, body, created_by)).fetchone()["id"]
+                 inv.due_date, overdue_days, inv.source_version, subject, body, created_by, generation_source)).fetchone()["id"]
     except pg_errors.UniqueViolation:
         raise DraftExists(inv.invoice_id)
     return get(new_id)  # type: ignore[return-value]
@@ -102,10 +105,16 @@ def update_text(draft_id: int, subject: str | None, body: str | None) -> dict | 
     return get(row["id"]) if row else None
 
 
-def decide(draft_id: int, status: str, decided_by: int, note: str | None) -> dict | None:
-    """Approve or reject. Only succeeds while the draft is pending (safe against double clicks)."""
+def decide(draft_id: int, status: str, decided_by: int, actor: str, drafted_by: str,
+           note: str | None) -> dict | None:
+    """Decide once, with an audit entry in the same transaction."""
     with connect() as conn:
         row = conn.execute(
             "UPDATE reminder_drafts SET status = %s, decided_by = %s, decided_at = now(), decision_note = %s "
-            "WHERE id = %s AND status = 'pending' RETURNING id", (status, decided_by, note, draft_id)).fetchone()
+            "WHERE id = %s AND status = 'pending' AND created_by <> %s "
+            "RETURNING id, invoice_id, created_by", (status, decided_by, note, draft_id, decided_by)).fetchone()
+        if row:
+            append_audit(actor, "approve_draft" if status == "approved" else "reject_draft",
+                         row["invoice_id"], {"draft_id": draft_id, "drafted_by": drafted_by, "note": note},
+                         conn=conn)
     return get(row["id"]) if row else None

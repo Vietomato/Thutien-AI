@@ -13,6 +13,7 @@ def test_accountant_creates_a_draft_from_real_invoice_fields(client, team, auth,
     assert r.status_code == 201
     d = r.json()
     assert d["status"] == "pending" and d["amount"] == 120_000_000 and d["overdue_days"] == 30
+    assert d["generation_source"] == "template_fallback"
     assert "120.000.000" in d["body"] and "10/10/2026" in d["body"] and d["created_by_username"] == "acc1"
     assert d["checks_ok"] and all(c["ok"] for c in d["checks"])
     assert audit.list_audit(action="create_draft")[0]["target"] == "INV-A"
@@ -52,6 +53,59 @@ def test_chief_approves_a_team_members_draft(client, team, auth, fake_odoo):
     assert out["status"] == "approved" and out["decided_by_username"] == "chief1" and out["decision_note"] == "OK"
     row = audit.list_audit(action="approve_draft")[0]
     assert row["actor"] == "chief1" and row["target"] == "INV-A" and row["detail"]["drafted_by"] == "acc1"
+
+
+def test_chief_cannot_decide_own_draft_or_edit_teammates_draft(client, team, auth, fake_odoo):
+    own = create(client, auth("chief1"), "INV-A").json()
+    for action in ("approve", "reject"):
+        response = client.post(f"/api/reminders/drafts/{own['id']}/{action}", headers=auth("chief1"))
+        assert response.status_code == 403
+    teammate = create(client, auth("acc1"), "INV-D").json()
+    assert client.patch(f"/api/reminders/drafts/{teammate['id']}",
+                        json={"body": "changed"}, headers=auth("chief1")).status_code == 403
+    assert client.get(f"/api/reminders/drafts/{own['id']}", headers=auth("chief1")).json()["status"] == "pending"
+
+
+def test_approval_rechecks_odoo_version_and_contact(client, team, auth, fake_odoo):
+    fake_odoo["invoices"][0] = fake_odoo["invoices"][0].model_copy(update={"source_version": "v1"})
+    d = create(client, auth("acc1")).json()
+    assert d["source_version"] == "v1"
+    fake_odoo["invoices"][0] = fake_odoo["invoices"][0].model_copy(update={"source_version": "v2"})
+    assert client.post(f"/api/reminders/drafts/{d['id']}/approve", headers=auth("chief1")).status_code == 409
+    fake_odoo["invoices"][0] = fake_odoo["invoices"][0].model_copy(update={"source_version": "v1", "contact_email": "new@example.test"})
+    assert client.post(f"/api/reminders/drafts/{d['id']}/approve", headers=auth("chief1")).status_code == 409
+    assert client.get(f"/api/reminders/drafts/{d['id']}", headers=auth("chief1")).json()["checks_ok"] is False
+
+
+def test_draft_history_is_scoped_and_records_edit_and_decision(client, team, auth, fake_odoo):
+    d = create(client, auth("acc1")).json()
+    client.patch(f"/api/reminders/drafts/{d['id']}", json={"body": "Reviewed"}, headers=auth("acc1"))
+    client.post(f"/api/reminders/drafts/{d['id']}/reject", json={"note": "Check invoice"}, headers=auth("chief1"))
+    path = f"/api/reminders/drafts/{d['id']}/history"
+    for username in ("acc1", "chief1"):
+        response = client.get(path, headers=auth(username))
+        assert response.status_code == 200
+        assert [x["action"] for x in response.json()["items"]] == ["create_draft", "edit_draft", "reject_draft"]
+        assert response.json()["items"][-1]["detail"]["note"] == "Check invoice"
+    assert client.get(path, headers=auth("chief2")).status_code == 404
+    assert client.get(path, headers=auth("cust1")).status_code == 403
+
+
+def test_decision_rolls_back_when_audit_write_fails(client, team, auth, fake_odoo, monkeypatch):
+    from app import drafts
+    d = create(client, auth("acc1")).json()
+
+    def broken_audit(*args, **kwargs):
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr(drafts, "append_audit", broken_audit)
+    try:
+        client.post(f"/api/reminders/drafts/{d['id']}/approve", headers=auth("chief1"))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("expected audit failure")
+    assert client.get(f"/api/reminders/drafts/{d['id']}", headers=auth("chief1")).json()["status"] == "pending"
 
 
 def test_chief_rejects(client, team, auth, fake_odoo):

@@ -8,5 +8,5 @@ def as_of_date() -> date:
 
 
 def data_source() -> str:
-    """Business data always comes from Odoo (read-only). There is no fixture mode at runtime."""
-    return "odoo"
+    """Report the selected live Odoo source; there is no runtime fixture mode."""
+    return "odoo_online" if os.getenv("ODOO_SOURCE", "local_db").strip().lower() == "online" else "odoo"

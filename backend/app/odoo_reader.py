@@ -1,31 +1,18 @@
-"""Read-only access to Odoo: supports either Odoo.com via XML-RPC API or direct PostgreSQL. Never writes."""
+"""Read-only Odoo data. Local PostgreSQL or Odoo Online JSON-2, selected by env."""
 import os
-import xmlrpc.client
 from datetime import date
-from pathlib import Path
-from typing import Any
 
+import psycopg
+
+from . import odoo_online
 from .contracts import Invoice, Payment
-
-# Load .env if present
-for _env_path in [Path(__file__).resolve().parents[2] / ".env", Path(__file__).resolve().parents[1] / ".env"]:
-    if _env_path.exists():
-        for _line in _env_path.read_text(encoding="utf-8").splitlines():
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                _k, _v = _line.split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
-
-try:
-    import psycopg
-except ImportError:
-    psycopg = None
 
 _INVOICE_SELECT = """
 SELECT COALESCE(m.ref, m.id::text), COALESCE(p.ref, p.id::text), p.name,
        m.invoice_date_due, round(m.amount_total)::bigint,
        round(m.amount_residual)::bigint,
-       COALESCE(m.narration::text, '') LIKE '%%[DISPUTE]%%', p.email
+       COALESCE(m.narration::text, '') LIKE '%%[DISPUTE]%%', p.email,
+       m.write_date::text
 FROM account_move m JOIN res_partner p ON p.id = m.partner_id
 WHERE m.move_type = 'out_invoice' AND m.state = 'posted'
   AND m.amount_residual > 0 {extra}
@@ -43,6 +30,7 @@ WHERE inv.move_type = 'out_invoice' AND inv.state = 'posted' {extra}
 ORDER BY pr.max_date, pr.id
 """
 
+# Days between due date and the last payment of each fully paid invoice (negative = paid early).
 _DELAYS_SQL = """
 SELECT COALESCE(p.ref, p.id::text), (max(pr.max_date)::date - m.invoice_date_due)
 FROM account_move m
@@ -54,6 +42,7 @@ WHERE m.move_type = 'out_invoice' AND m.state = 'posted'
 GROUP BY m.id, p.id, m.invoice_date_due
 """
 
+# Supplier bills still to pay: the money going out (obligations).
 _BILLS_SQL = """
 SELECT m.invoice_date_due, round(m.amount_residual)::bigint
 FROM account_move m
@@ -78,191 +67,27 @@ class OdooUnavailable(Exception):
     pass
 
 
-def is_xmlrpc_mode() -> bool:
-    """True if configured to connect to Odoo via XML-RPC API (e.g. Odoo.com SaaS)."""
-    return bool(os.getenv("ODOO_URL") and (os.getenv("ODOO_API_KEY") or os.getenv("ODOO_PASSWORD") or os.getenv("ODOO_SETUP_PASSWORD")))
+def _online() -> bool:
+    source = os.getenv("ODOO_SOURCE", "local_db").strip().lower()
+    if source not in ("local_db", "online"):
+        raise OdooUnavailable("ODOO_SOURCE must be local_db or online")
+    return source == "online"
 
 
-# ---------------------------------------------------------------------------
-# XML-RPC implementation (for Odoo.com / SaaS)
-# ---------------------------------------------------------------------------
+def _cloud(method: str, *args):
+    try:
+        return getattr(odoo_online, method)(*args)
+    except odoo_online.OdooOnlineError as exc:
+        raise OdooUnavailable(str(exc)) from None
 
-class _OdooXmlRpcClient:
-    def __init__(self):
-        self.url = (os.getenv("ODOO_URL") or "").rstrip("/")
-        if self.url.endswith("/odoo"):
-            self.url = self.url[:-5]
-        self.db = os.getenv("ODOO_DB") or os.getenv("ODOO_DB_NAME", "odoo")
-        self.user = os.getenv("ODOO_EMAIL") or os.getenv("ODOO_USER") or os.getenv("ODOO_SETUP_USER", "")
-        self.key = os.getenv("ODOO_API_KEY") or os.getenv("ODOO_PASSWORD") or os.getenv("ODOO_SETUP_PASSWORD", "")
-        self._uid = None
-        self._common = None
-        self._models = None
-
-    def connect(self):
-        if not self.url or not self.db or not self.user or not self.key:
-            raise OdooUnavailable("Odoo XML-RPC credentials missing: ODOO_URL, ODOO_DB, ODOO_EMAIL, ODOO_API_KEY")
-        try:
-            if self._uid is None:
-                self._common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common", allow_none=True)
-                self._uid = self._common.authenticate(self.db, self.user, self.key, {})
-                if not self._uid:
-                    raise OdooUnavailable("Odoo authentication failed: invalid credentials or database name")
-                self._models = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/object", allow_none=True)
-        except Exception as e:
-            raise OdooUnavailable(f"cannot connect to Odoo XML-RPC: {e}") from e
-
-    def search_read(self, model: str, domain: list, fields: list, order: str | None = None, limit: int | None = None) -> list[dict]:
-        self.connect()
-        kwargs = {}
-        if order:
-            kwargs["order"] = order
-        if limit:
-            kwargs["limit"] = limit
-        try:
-            return self._models.execute_kw(self.db, self._uid, self.key, model, "search_read", [domain, fields], kwargs)
-        except Exception as e:
-            raise OdooUnavailable(f"Odoo XML-RPC {model}.search_read failed: {e}") from e
-
-    def execute(self, model: str, method: str, *args, **kwargs) -> Any:
-        self.connect()
-        try:
-            return self._models.execute_kw(self.db, self._uid, self.key, model, method, list(args), kwargs)
-        except Exception as e:
-            raise OdooUnavailable(f"Odoo XML-RPC {model}.{method} failed: {e}") from e
-
-
-_client = _OdooXmlRpcClient()
-
-
-def _xmlrpc_partner_map() -> dict[int, dict]:
-    """Helper to fetch partners mapped by ID."""
-    partners = _client.search_read("res.partner", [], ["id", "name", "ref", "email"])
-    return {p["id"]: p for p in partners}
-
-
-def _xmlrpc_open_invoices(customer_id: str | None = None) -> list[Invoice]:
-    domain = [["move_type", "=", "out_invoice"], ["state", "=", "posted"], ["amount_residual", ">", 0]]
-    inv_records = _client.search_read(
-        "account.move", domain,
-        ["id", "ref", "partner_id", "invoice_date_due", "amount_total", "amount_residual", "narration"],
-        order="invoice_date_due asc, id asc"
-    )
-    if not inv_records:
-        return []
-
-    partners = _xmlrpc_partner_map()
-    result = []
-    for r in inv_records:
-        p_id = r["partner_id"][0] if r.get("partner_id") else None
-        partner = partners.get(p_id, {})
-        c_id = partner.get("ref") or (str(p_id) if p_id else "")
-        if customer_id and c_id != customer_id:
-            continue
-
-        inv_ref = r.get("ref") or str(r["id"])
-        due = date.fromisoformat(r["invoice_date_due"]) if r.get("invoice_date_due") else None
-        narration = r.get("narration") or ""
-        dispute = "disputed" if "[DISPUTE]" in narration else "none"
-
-        result.append(Invoice(
-            invoice_id=inv_ref,
-            customer_id=c_id,
-            display_name=partner.get("name") or (r["partner_id"][1] if r.get("partner_id") else ""),
-            due_date=due,
-            invoice_amount=int(round(r.get("amount_total") or 0)),
-            remaining_amount=int(round(r.get("amount_residual") or 0)),
-            dispute_status=dispute,
-            contact_email=partner.get("email") or ""
-        ))
-    return result
-
-
-def _xmlrpc_payment_history(customer_id: str | None = None) -> list[Payment]:
-    domain = [["payment_type", "=", "inbound"], ["state", "=", "posted"]]
-    pays = _client.search_read(
-        "account.payment", domain,
-        ["id", "name", "payment_reference", "memo", "partner_id", "date", "amount", "reconciled_invoice_ids"],
-        order="date asc, id asc"
-    )
-    if not pays:
-        return []
-
-    partners = _xmlrpc_partner_map()
-    result = []
-    for p in pays:
-        p_id = p["partner_id"][0] if p.get("partner_id") else None
-        partner = partners.get(p_id, {})
-        c_id = partner.get("ref") or (str(p_id) if p_id else "")
-        if customer_id and c_id != customer_id:
-            continue
-
-        p_date = date.fromisoformat(p["date"]) if p.get("date") else date.today()
-        inv_ref = p.get("payment_reference") or p.get("memo") or p.get("name") or str(p["id"])
-        result.append(Payment(
-            payment_id=str(p["id"]),
-            invoice_id=inv_ref,
-            customer_id=c_id,
-            payment_date=p_date,
-            amount=int(round(p.get("amount") or 0))
-        ))
-    return result
-
-
-def _xmlrpc_paid_delays(as_of_date: date | None = None) -> list[tuple[str, int]]:
-    domain = [["move_type", "=", "out_invoice"], ["state", "=", "posted"],
-              ["amount_residual", "=", 0], ["invoice_date_due", "!=", False]]
-    records = _client.search_read(
-        "account.move", domain,
-        ["id", "partner_id", "invoice_date_due", "write_date"]
-    )
-    partners = _xmlrpc_partner_map()
-    delays = []
-    for r in records:
-        p_id = r["partner_id"][0] if r.get("partner_id") else None
-        c_id = partners.get(p_id, {}).get("ref") or (str(p_id) if p_id else "")
-        due = date.fromisoformat(r["invoice_date_due"])
-        paid_on = date.fromisoformat(r["write_date"][:10])
-        if as_of_date is not None and paid_on > as_of_date:
-            continue
-        diff_days = (paid_on - due).days
-        delays.append((c_id, diff_days))
-    return delays
-
-
-def _xmlrpc_supplier_bills() -> list[tuple[date, int]]:
-    domain = [["move_type", "=", "in_invoice"], ["state", "=", "posted"],
-              ["amount_residual", ">", 0], ["invoice_date_due", "!=", False]]
-    records = _client.search_read(
-        "account.move", domain,
-        ["invoice_date_due", "amount_residual"], order="invoice_date_due asc"
-    )
-    return [(date.fromisoformat(r["invoice_date_due"]), int(round(r["amount_residual"]))) for r in records]
-
-
-def _xmlrpc_customers() -> list[dict]:
-    domain = [["move_type", "=", "out_invoice"], ["state", "=", "posted"]]
-    invs = _client.search_read("account.move", domain, ["partner_id"])
-    partner_ids = list({r["partner_id"][0] for r in invs if r.get("partner_id")})
-    if not partner_ids:
-        return []
-    records = _client.search_read("res.partner", [["id", "in", partner_ids]], ["id", "ref", "name"])
-    return [{"customer_id": r.get("ref") or str(r["id"]), "name": r["name"]} for r in records]
-
-
-# ---------------------------------------------------------------------------
-# PostgreSQL implementation (for local Docker / self-hosted DB)
-# ---------------------------------------------------------------------------
 
 def _connect():
-    if psycopg is None:
-        raise OdooUnavailable("psycopg is not installed for direct database access")
     try:
         return psycopg.connect(
             host=os.getenv("ODOO_DB_HOST", "localhost"),
             port=int(os.getenv("ODOO_DB_PORT", "5432")),
             dbname=os.getenv("ODOO_DB_NAME", "odoo"),
-            user=os.getenv("ODOO_RO_USER"),
+            user=os.getenv("ODOO_RO_USER", "thutien_ro"),
             password=os.getenv("ODOO_RO_PASSWORD"),
             connect_timeout=5,
             options="-c default_transaction_read_only=on",
@@ -283,17 +108,14 @@ def _query(sql: str, params: list | None = None) -> list[tuple]:
 def _invoice(r) -> Invoice:
     return Invoice(invoice_id=r[0], customer_id=r[1], display_name=r[2], due_date=r[3],
                    invoice_amount=r[4], remaining_amount=r[5],
-                   dispute_status="disputed" if r[6] else "none", contact_email=r[7])
+                   dispute_status="disputed" if r[6] else "none", contact_email=r[7],
+                   source_version=r[8])
 
-
-# ---------------------------------------------------------------------------
-# Public Facade (switches between XML-RPC and PostgreSQL automatically)
-# ---------------------------------------------------------------------------
 
 def open_invoices(customer_id: str | None = None) -> list[Invoice]:
-    """Open invoices. With customer_id, only that customer's."""
-    if is_xmlrpc_mode():
-        return _xmlrpc_open_invoices(customer_id)
+    """Open invoices. With customer_id, only that customer's (the filter is applied in SQL)."""
+    if _online():
+        return _cloud("open_invoices", customer_id)
     if customer_id is None:
         rows = _query(_INVOICE_SELECT.format(extra=""))
     else:
@@ -302,19 +124,15 @@ def open_invoices(customer_id: str | None = None) -> list[Invoice]:
 
 
 def open_invoice(invoice_id: str) -> Invoice | None:
-    if is_xmlrpc_mode():
-        all_invs = _xmlrpc_open_invoices()
-        for inv in all_invs:
-            if inv.invoice_id == invoice_id:
-                return inv
-        return None
+    if _online():
+        return _cloud("open_invoice", invoice_id)
     rows = _query(_INVOICE_SELECT.format(extra=f"AND {_INV_ID} = %s"), [invoice_id])
     return _invoice(rows[0]) if rows else None
 
 
 def payment_history(customer_id: str | None = None) -> list[Payment]:
-    if is_xmlrpc_mode():
-        return _xmlrpc_payment_history(customer_id)
+    if _online():
+        return _cloud("payment_history", customer_id)
     if customer_id is None:
         rows = _query(_PAYMENT_SELECT.format(extra=""))
     else:
@@ -324,9 +142,9 @@ def payment_history(customer_id: str | None = None) -> list[Payment]:
 
 
 def paid_delays(as_of_date: date | None = None) -> list[tuple[str, int]]:
-    """(customer_id, days late) for every fully paid invoice. Input for payment predictions."""
-    if is_xmlrpc_mode():
-        return _xmlrpc_paid_delays(as_of_date)
+    """(customer_id, days late) for fully paid invoices settled by the calculation date."""
+    if _online():
+        return _cloud("paid_delays", as_of_date)
     sql = _DELAYS_SQL
     params = None
     if as_of_date is not None:
@@ -337,12 +155,12 @@ def paid_delays(as_of_date: date | None = None) -> list[tuple[str, int]]:
 
 def supplier_bills() -> list[tuple[date, int]]:
     """(due date, amount) of supplier bills still unpaid."""
-    if is_xmlrpc_mode():
-        return _xmlrpc_supplier_bills()
+    if _online():
+        return _cloud("supplier_bills")
     return [(r[0], int(r[1])) for r in _query(_BILLS_SQL)]
 
 
 def customers() -> list[dict]:
-    if is_xmlrpc_mode():
-        return _xmlrpc_customers()
+    if _online():
+        return _cloud("customers")
     return [{"customer_id": r[0], "name": r[1]} for r in _query(_CUSTOMERS_SQL)]

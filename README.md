@@ -4,6 +4,55 @@ An assistant for accounts receivable and cash flow on Odoo.
 Principle: the system reads and calculates, the accountant stays in control.
 The system is read-only on Odoo: nothing is ever written to it.
 
+## Optional Odoo Online source
+
+The default demo reads the local Odoo PostgreSQL container. To read a teammate's
+Odoo Online instance instead, the backend supports Odoo 19+ JSON-2 with an API
+key. Odoo documents External API access for **Custom** plans; One App Free and
+Standard plans do not provide it. Use a dedicated Odoo user with read access
+only to the accounting records the demo needs. The API key stays in the ignored
+local `.env`, never in React, `.env.example`, a commit, or a chat message.
+
+Add these lines to your existing `.env` (replace the placeholder locally):
+
+```dotenv
+ODOO_ONLINE_URL=https://demo-trading-company.odoo.com
+ODOO_ONLINE_API_KEY=<your Odoo API key>
+# Optional if the domain does not identify the database by itself:
+# ODOO_ONLINE_DB=demo-trading-company
+# Optional: technical Odoo field containing the dispute state, if your database has one:
+# ODOO_ONLINE_DISPUTE_FIELD=x_studio_dispute_status
+```
+
+Paste only the key value after `ODOO_ONLINE_API_KEY=`. Do not add another
+`ODOO_API_KEY=` prefix inside the value.
+
+Create the key in Odoo: **Preferences / My Profile → Account Security → New API
+Key**. The Odoo user needs read access to invoices, partners, currencies,
+invoice lines and payment reconciliations. Run from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_odoo_online_demo.ps1
+```
+
+The script starts local PostgreSQL for users/drafts/tasks/audit, creates a
+separate `thutien_online` application database, builds the frontend and opens
+the next available backend port from 8005. It does **not** write to Odoo Online.
+Add `-WithOllama` to the command if you also want local LLM wording for drafts.
+The default local Odoo demo still uses `run_t18_demo.ps1` and its own
+`thutien_app` database.
+
+If the initial API check returns HTTP 401, Odoo rejected the key. Generate a
+new API key from the user profile **inside this Odoo database**, then update
+only your ignored `.env`. The login password and keys from unrelated services
+are not Odoo JSON-2 API keys. HTTP 403 indicates access rights or plan limits.
+
+Only VND invoices and supplier bills are included; other currencies are not
+converted. Disputes are detected from `[DISPUTE]` in the invoice narration or
+the optional configured field. Confirm your Odoo dispute field before using
+reminder eligibility. All API errors are surfaced; the app does not silently
+replace cloud data with local demo data.
+
 ## How the data is organised
 
 - **Odoo database** (read-only): customers, invoices, payments, supplier bills. Every business number comes from here.
@@ -20,6 +69,30 @@ remaining balance and invoice ID. Each row includes the prediction, the rate sou
 An invoice is eligible for a reminder draft only when it is overdue, has a positive balance and contact email,
 is not disputed, and has no pending draft. This score is a work-queue heuristic, not a claim that an invoice
 will or will not be paid.
+
+## T18 local LLM for reminder wording (optional)
+
+The backend can ask a local Ollama model for two generic Vietnamese sentences. It never sends customer,
+invoice, amount, date, or email data to the model. The backend inserts those facts from Odoo, validates the
+model output, and saves the draft in the application database. The UI labels the source as Ollama or a
+template fallback. A draft is never sent automatically and still requires accountant review.
+
+After Docker Desktop, Python and Node.js are installed and Odoo is initialized as described below, run one
+PowerShell command from the repository root:
+
+    .\scripts\run_t18_demo.ps1
+
+The script starts PostgreSQL, Odoo and Ollama with Docker, creates the application DB roles and demo users
+if missing, downloads `qwen3:4b` once into a persistent Docker volume, installs app dependencies, builds
+the frontend, checks both databases and starts FastAPI at http://127.0.0.1:8001/app/ (or the next free port).
+It creates a local
+ignored `.env` with the development database passwords from the SQL setup scripts and a random JWT secret.
+If your database passwords differ, edit `.env` before running the script again. No separate Ollama
+installation or API key is needed. Odoo's first database and Invoicing app still need to be created in its UI.
+
+Sign in as an accountant and create a reminder draft for an overdue invoice. If Ollama is unavailable, times
+out, or returns invalid text, the backend uses and labels the fixed template instead. The optional
+`OLLAMA_TIMEOUT_SECONDS` defaults to 30 without the script; the script sets it to 60 for CPU demos.
 
 ## Roles and permissions
 
