@@ -42,6 +42,7 @@ export default function App() {
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const requestId = useRef(0);
+  const actionInFlight = useRef(false);
 
   const notify = (message: string) => {
     setToast(message);
@@ -95,10 +96,12 @@ export default function App() {
   const refresh = () => { if (me) void load(me); };
 
   const act: Action = async (job, message) => {
-    if (!me) return false;
+    if (!me || actionInFlight.current) return false;
+    actionInFlight.current = true;
     setBusy(true); setDataError("");
     try { await job(); notify(message); await load(me); return true; }
-    catch (error) { setDataError(errorMessage(error)); setBusy(false); return false; }
+    catch (error) { setDataError(errorMessage(error)); return false; }
+    finally { actionInFlight.current = false; setBusy(false); }
   };
 
   async function submitAuth(event: React.FormEvent) {
