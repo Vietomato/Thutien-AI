@@ -27,6 +27,7 @@ export function ForecastChart({ forecast }: { forecast?: Row }) {
 }
 
 export function Overview({ data, onNavigate }: { data: Row; onNavigate: (page: string) => void }) {
+  if (!data.summary) return <div className="empty">Chưa có dữ liệu tổng quan. Chờ đồng bộ hoàn tất hoặc bấm “Tải lại dữ liệu” ở cuối trang.</div>;
   const summary = data.summary ?? {};
   const priority: Row[] = data.priority?.items ?? [];
   const forecast = data.forecast;

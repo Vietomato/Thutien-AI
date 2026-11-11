@@ -114,7 +114,7 @@ export default function App() {
         const profile = await api<Profile & { access_token: string }>("/api/auth/login", jsonBody({ username: username.trim(), password }), true);
         tokenStore.set(profile.access_token);
         setMe(profile); setPage(initialPage(profile)); setData({}); setPassword("");
-        void load(profile);
+        await load(profile);
       }
     } catch (error) { setAuthError(errorMessage(error)); }
     finally { setBusy(false); }
