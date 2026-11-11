@@ -4,7 +4,13 @@ The text is built from real invoice fields by a fixed template; numbers are neve
 Approving a draft only records the decision. This app has no email sender, so nothing is delivered."""
 from datetime import date
 
-from psycopg import errors as pg_errors
+try:
+    from psycopg import errors as pg_errors
+except Exception:
+    class _Errors:
+        class UniqueViolation(Exception):
+            pass
+    pg_errors = _Errors()
 
 from .audit import append_audit
 from .contracts import Invoice

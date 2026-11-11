@@ -100,6 +100,7 @@ out, or returns invalid text, the backend uses and labels the fixed template ins
 |---|---|---|---|---|
 | Invoices, payments, summary | all | all | own only | no |
 | Payment predictions, 12-week forecast | yes | yes | no | no |
+| Enter expected outgoings (`obligation:write`) | yes | yes | no | no |
 | Write reminder drafts | yes | yes | no | no |
 | Approve or reject drafts | no | yes | no | no |
 | Own collection tasks | yes | yes | no | no |
@@ -211,8 +212,22 @@ data is known. `test_odoo_integration.py` reads the real Odoo database and is sk
 
 ## Supplier bills and the cash forecast
 
-"Phải chi" in the forecast is the unpaid supplier bills in Odoo (vendor bills with a due date). If Odoo has none,
-obligations are 0 and no week is flagged as short; the dashboard says so.
+"Phải chi" in the forecast has two sources, added together per week:
+
+- the unpaid supplier bills in Odoo (vendor bills with a due date), and
+- expected outgoings (rent, payroll, tax...) that an accountant types in on the F4 screen. They are stored in the
+  `obligations` table of the application database (created by `schema.sql`, like the other tables). The UI says which is which.
+
+`GET /api/forecast` returns the weeks plus `alerts` (weeks where the pessimistic P75 receipts are below the outgoings, with
+the shortfall), `receipts_out_of_horizon` and `obligations_out_of_horizon` (money after the last week is reported, never
+dropped) and `obligations_sources`. `GET /api/obligations` lists the typed outgoings and `POST /api/obligations`
+(description, amount > 0 in VND, due date) adds one; every addition is written to the audit log.
+
+A customer needs at least 5 paid invoices for their own P25/P50/P75; with fewer, the delays of all customers are
+used and the prediction is marked low confidence. The three lines are stress scenarios, not a confidence interval,
+and the forecast is not a cash balance (the opening balance is unknown).
+
+If Odoo has no supplier bills and nothing has been typed in, obligations are 0 and no week is flagged as short.
 
 ## Team rules
 

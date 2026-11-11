@@ -10,6 +10,7 @@ READ_ENDPOINTS = {
     "/api/summary": {"accountant", "chief_accountant", "customer"},
     "/api/predictions": {"accountant", "chief_accountant"},
     "/api/forecast": {"accountant", "chief_accountant"},
+    "/api/obligations": {"accountant", "chief_accountant"},
     "/api/f3/priority": {"accountant", "chief_accountant"},
     "/api/reminders/drafts": {"accountant", "chief_accountant"},
     "/api/reminders/candidates": {"accountant", "chief_accountant"},

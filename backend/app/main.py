@@ -1,9 +1,19 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+# Load .env if present
+for _env_path in [Path(__file__).resolve().parents[2] / ".env", Path(__file__).resolve().parents[1] / ".env"]:
+    if _env_path.exists():
+        for _line in _env_path.read_text(encoding="utf-8").splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db, odoo_reader
@@ -12,6 +22,7 @@ from .config import as_of_date, data_source
 from .routes_admin import router as admin_router
 from .routes_data import router as data_router
 from .routes_f3 import router as f3_router
+from .routes_obligations import router as obligations_router
 from .routes_reminders import router as reminders_router
 from .routes_tasks import router as tasks_router
 
@@ -33,6 +44,7 @@ app = FastAPI(title="ThuTien AI", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(data_router)
 app.include_router(f3_router)
+app.include_router(obligations_router)
 app.include_router(reminders_router)
 app.include_router(tasks_router)
 app.include_router(admin_router)
@@ -60,6 +72,11 @@ def health():
         app_db = "unavailable"
     return {"status": "ok" if app_db == "ok" else "degraded", "data_source": data_source(),
             "as_of_date": as_of_date().isoformat(), "app_db": app_db}
+
+
+@app.get("/")
+def root():
+    return RedirectResponse(url="/app/")
 
 
 # The React app must be built with `npm run build` before FastAPI can serve it.

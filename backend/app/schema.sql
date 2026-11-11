@@ -76,3 +76,15 @@ CREATE TABLE IF NOT EXISTS tasks (
     done_at       TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS tasks_assignee_idx ON tasks (assignee_id, status);
+
+-- Expected outgoings typed in by the accountant. They add to the supplier bills read from Odoo.
+CREATE TABLE IF NOT EXISTS obligations (
+    id          BIGSERIAL PRIMARY KEY,
+    description TEXT NOT NULL CHECK (length(btrim(description)) > 0),
+    amount      BIGINT NOT NULL CHECK (amount > 0),
+    currency    TEXT NOT NULL DEFAULT 'VND' CHECK (currency = 'VND'),
+    due_date    DATE NOT NULL,
+    created_by  BIGINT NOT NULL REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS obligations_due_idx ON obligations (due_date);

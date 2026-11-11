@@ -4,7 +4,7 @@ Inputs come from odoo_reader; every number here is computed from real invoices a
 Prediction method
   For each open invoice we look at how many days late (after the due date) the customer paid their
   earlier invoices. P25/P50/P75 of those delays give three payment dates.
-  - Fewer than MIN_HISTORY paid invoices for the customer: use all customers' delays (low_history).
+  - Fewer than MIN_HISTORY (5) paid invoices for the customer: use all customers' delays (low_history).
   - No history at all: assume payment on max(due date, as_of date) (method 'no_history').
   - Overdue invoice: only delays at least as long as the current overdue count are plausible, so we keep
     those. If every past delay was shorter than the current overdue, the invoice is already later than
@@ -15,7 +15,7 @@ from datetime import date, timedelta
 
 from .contracts import Invoice, Prediction, Week
 
-MIN_HISTORY = 3
+MIN_HISTORY = 5
 WEEKS = 12
 
 
@@ -104,6 +104,23 @@ def forecast(invoices: list[Invoice], predictions: list[Prediction], bills: list
              obligations=obligations[i], gap_p75=max(obligations[i] - receipts["p75"][i], 0))
         for i in range(weeks)
     ]
+
+
+def beyond_horizon(invoices: list[Invoice], predictions: list[Prediction], as_of: date, weeks: int = WEEKS) -> dict[str, int]:
+    """Receipts that land after the last forecast week, per scenario. Shown next to the chart so that
+    money is never silently dropped: weeks + beyond = total still owed on the predicted invoices."""
+    amount = {i.invoice_id: i.remaining_amount for i in invoices}
+    out = {"p25": 0, "p50": 0, "p75": 0}
+    for p in predictions:
+        for key, day in (("p25", p.predicted_date_p25), ("p50", p.predicted_date_p50), ("p75", p.predicted_date_p75)):
+            if _week_index(day, as_of) >= weeks:
+                out[key] += amount.get(p.invoice_id, 0)
+    return out
+
+
+def bills_beyond_horizon(bills: list[tuple[date, int]], as_of: date, weeks: int = WEEKS) -> int:
+    """Outgoings due after the last forecast week."""
+    return sum(amt for due, amt in bills if _week_index(due, as_of) >= weeks)
 
 
 def summarize(invoices: list[Invoice], as_of: date) -> dict:

@@ -1,5 +1,15 @@
 """Append-only audit log in the app database. There is no update or delete (a DB trigger enforces it)."""
-from psycopg.types.json import Jsonb
+import json
+try:
+    from psycopg.types.json import Jsonb
+except Exception:
+    class Jsonb:  # type: ignore
+        def __init__(self, data):
+            self.data = data
+        def __conform__(self, proto):
+            return json.dumps(self.data)
+        def __str__(self):
+            return json.dumps(self.data)
 
 from .db import connect
 
