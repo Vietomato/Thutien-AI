@@ -26,3 +26,8 @@ export function Head({ title, subtitle, right }: { title: string; subtitle?: str
 export function Tag({ kind, children }: { kind: string; children: React.ReactNode }) {
   return <span className={`tag tag-${kind}`}>{children}</span>;
 }
+
+export function SourceBadge({ source }: { source?: string }) {
+  const label = source === "odoo_online" ? "Odoo.com" : source === "odoo" ? "Odoo local" : "Odoo";
+  return <span className="pill pill-success"><span className="pill-dot" />Nguồn: {label} (chỉ đọc)</span>;
+}
