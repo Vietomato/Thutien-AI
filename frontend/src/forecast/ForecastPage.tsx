@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { api, jsonBody } from "@/lib/api";
-import { Action, date, Head, money, Row, SourceBadge } from "@/ui";
+import { Action, date, Head, money, Row } from "@/ui";
 import { ForecastChart } from "./ForecastChart";
-import { compactMoney, summarize, toNumber, weekRange, type WeekRow } from "./forecastMath";
+import { SCENARIOS, compactMoney, receiptOf, summarize, toNumber, weekRange, type WeekRow } from "./forecastMath";
 import "./forecast.css";
 
 export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast?: Row; obligations?: Row; canEdit: boolean; act: Action }) {
@@ -16,8 +16,8 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
   const beyond: Row = forecast?.receipts_out_of_horizon ?? {};
   const summary = useMemo(() => summarize(weeks), [weeks]);
   // When every receipt lands inside the 12 weeks the three scenarios add up to the same total: only the timing differs.
-  const sameTotal = Math.round(summary.totalReceipts.early) === Math.round(summary.totalReceipts.late)
-    && Math.round(summary.totalReceipts.usual) === Math.round(summary.totalReceipts.late);
+  const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(12, Math.abs(b) * 0.001);
+  const sameTotal = near(summary.totalReceipts.early, summary.totalReceipts.late) && near(summary.totalReceipts.usual, summary.totalReceipts.late);
   const hasBeyond = toNumber(beyond.p25) + toNumber(beyond.p50) + toNumber(beyond.p75) > 0 || toNumber(forecast?.obligations_out_of_horizon) > 0;
   const maxGap = Math.max(1, ...alerts.map(a => toNumber(a.gap_p75)));
   const amountValue = Number(amount);
@@ -30,7 +30,7 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
   };
 
   return <>
-    <Head title="Dự báo dòng tiền · F4" subtitle="Tuần nào tiền thu về có thể không đủ để chi, dựa trên thói quen trả tiền của từng khách." right={<SourceBadge source={forecast?.source} />} />
+    <Head title="Dự báo dòng tiền" subtitle="Tuần nào tiền thu về có thể không đủ để chi, dựa trên thói quen trả tiền của từng khách." />
 
     <div className="alert alert-warning" role="note"><div>
       <div className="alert-title">Cần biết khi đọc số liệu</div>
@@ -50,7 +50,7 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
         <strong className="kpi-value" title={money(summary.totalReceipts.usual)}>{compactMoney(summary.totalReceipts.usual)}</strong>
         <span className="kpi-note">{sameTotal
           ? "Ba kịch bản cùng tổng, chỉ khác tuần tiền về"
-          : `Theo thói quen. Từ ${compactMoney(summary.totalReceipts.late)} (trả muộn) đến ${compactMoney(summary.totalReceipts.early)} (trả sớm)`}</span></div>
+          : `Kỳ vọng theo xác suất. Hai kịch bản thử: trả muộn ${compactMoney(summary.totalReceipts.late)}, trả sớm ${compactMoney(summary.totalReceipts.early)}`}</span></div>
       <div className="kpi"><span className="kpi-label">Chi dự kiến 12 tuần</span>
         <strong className="kpi-value" title={money(summary.totalObligations)}>{compactMoney(summary.totalObligations)}</strong>
         <span className="kpi-note">Odoo {compactMoney(toNumber(sources.odoo_supplier_bills))} + nhập tay {compactMoney(toNumber(sources.manual))}</span></div>
@@ -93,7 +93,7 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
       <div className="table-scroll"><table className="table"><thead><tr>
         <th>Tuần</th><th className="num">Thu · trả sớm</th><th className="num">Thu · theo thói quen</th><th className="num">Thu · trả muộn</th><th className="num">Chi dự kiến</th><th className="num">Thiếu (nếu trả muộn)</th>
       </tr></thead><tbody>{weeks.map(w => <tr key={w.week_start} className={w.gap_p75 > 0 ? "f4-row-short" : ""}>
-        <td>{weekRange(w.week_start)}</td><td className="num">{money(w.receipt_p25)}</td><td className="num">{money(w.receipt_p50)}</td>
+        <td>{weekRange(w.week_start)}</td><td className="num">{money(w.receipt_p25)}</td><td className="num">{money(receiptOf(w, SCENARIOS[1]))}</td>
         <td className="num">{money(w.receipt_p75)}</td><td className="num">{money(w.obligations)}</td><td className="num">{money(w.gap_p75)}</td>
       </tr>)}</tbody></table></div>
     </section>

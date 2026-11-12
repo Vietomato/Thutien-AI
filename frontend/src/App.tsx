@@ -3,6 +3,9 @@ import { api, ApiError, jsonBody, tokenStore } from "@/lib/api";
 import { ForecastPage, Invoices, Overview } from "@/FinancePages";
 import { AdminUsers, Audit, Customers, Reminders, Tasks } from "@/Operations";
 import { Action, errorMessage, roleName, Row } from "@/ui";
+import { Icon } from "@/icons";
+import { Landing } from "@/Landing";
+import { Logo } from "@/Logo";
 
 type Page = "overview" | "invoices" | "forecast" | "drafts" | "tasks" | "payments" | "users" | "audit";
 type Profile = Row & { username: string; full_name: string; role: string; permissions: string[] };
@@ -24,6 +27,21 @@ const demoAccounts = [
   ["customer1", "Khách hàng"], ["admin1", "Quản trị viên"],
 ] as const;
 
+// Decorative weekly chart for the login screen: the same picture the product draws (receipts, outgoings, shortfall weeks).
+const ART_WEEKS: [number, number][] = [[62, 48], [30, 74], [58, 54], [44, 36], [82, 50], [34, 56], [28, 82], [20, 8], [14, 6], [0, 0], [4, 2], [6, 26]];
+function AuthArt() {
+  const slot = 40, base = 170, h = 1.4;
+  return <svg className="auth-art" viewBox="0 0 480 190" aria-hidden="true" focusable="false">
+    {[1, 2, 3].map(n => <line key={n} className="art-grid" x1="0" x2="480" y1={base - n * 45} y2={base - n * 45} />)}
+    <line className="art-axis" x1="0" x2="480" y1={base} y2={base} />
+    {ART_WEEKS.map(([income, outgo], i) => <g key={i}>
+      {outgo > income && <rect className="art-short" x={i * slot + 2} y="14" width={slot - 4} height={base - 14} rx="5" />}
+      <rect className="art-in" x={i * slot + 9} y={base - income * h} width="10" height={income * h} rx="2" />
+      <rect className="art-out" x={i * slot + 21} y={base - outgo * h} width="10" height={outgo * h} rx="2" />
+    </g>)}
+  </svg>;
+}
+
 export default function App() {
   const [me, setMe] = useState<Profile | null>(null);
   const [restoring, setRestoring] = useState(Boolean(tokenStore.get()));
@@ -34,6 +52,8 @@ export default function App() {
   const [dataError, setDataError] = useState("");
   const [toast, setToast] = useState("");
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
+  const [view, setView] = useState<"home" | "login">(tokenStore.get() ? "login" : "home");
+  const [trialOpen, setTrialOpen] = useState(false);
   const [username, setUsername] = useState("accountant1");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -85,7 +105,7 @@ export default function App() {
       } else { failed.push(name); console.warn(`API ${name}`, result.error); }
     }
     setData(next);
-    setDataError(failed.length ? `Không tải được: ${failed.join(", ")}. Kiểm tra /health, Odoo và PostgreSQL rồi tải lại.` : "");
+    setDataError(failed.length ? `Không tải được: ${failed.join(", ")}. Kiểm tra kết nối rồi tải lại.` : "");
     setBusy(false);
   }, []);
 
@@ -130,7 +150,7 @@ export default function App() {
     requestId.current++;
     void api("/api/auth/logout", jsonBody({})).catch(() => {});
     tokenStore.clear(); setMe(null); setData({}); setAuthError(""); setDataError("");
-    setAccountOpen(false); setPasswordOpen(false); setPage("overview"); window.history.replaceState(null, "", "/app/");
+    setAccountOpen(false); setPasswordOpen(false); setPage("overview"); setView("home"); setTrialOpen(false); window.history.replaceState(null, "", "/app/");
   }
 
   async function changePassword(event: React.FormEvent) {
@@ -141,25 +161,58 @@ export default function App() {
   }
 
   if (restoring) return <div className="auth"><div className="auth-panel"><div className="auth-card"><h2>Đang mở phiên làm việc…</h2></div></div></div>;
+  if (!me && view === "home") return <Landing onLogin={() => { setTrialOpen(false); setAuthTab("login"); setView("login"); }} onTrial={() => { setTrialOpen(true); setAuthTab("login"); setView("login"); }} />;
   if (!me) return <div className="auth">
-    <section className="auth-brand"><div className="brand-row"><span className="brand-mark">✓</span><span className="brand-name">ThuTiền AI</span></div><div className="brand-body"><h1>Công nợ rõ ràng.<br />Quyết định có kiểm soát.</h1><p className="lead">Kết nối hóa đơn Odoo, xếp ưu tiên F3 và chuẩn bị nháp nhắc nợ để kế toán duyệt.</p><div className="bullets"><div className="bullet">Xem số dư, hạn thanh toán và lý do xếp hạng.</div><div className="bullet">Theo dõi dự báo thu tiền và nghĩa vụ trong 12 tuần.</div><div className="bullet">Ghi nhiệm vụ, nháp và nhật ký vào PostgreSQL của ứng dụng.</div></div></div><div className="brand-foot">Odoo chỉ đọc · Kế toán giữ quyền quyết định</div></section>
-    <section className="auth-panel"><div className="auth-card"><div><span className="eyebrow">THUTIỀN AI · BẢN DEMO LOCAL</span><h2>{authTab === "login" ? "Đăng nhập" : "Tạo tài khoản khách hàng"}</h2><p className="sub">{authTab === "login" ? "Đăng nhập bằng tài khoản đã seed trong PostgreSQL." : "Tài khoản mới cần quản trị viên liên kết với khách hàng Odoo."}</p></div><div className="tabs"><button className="tab" aria-selected={authTab === "login"} onClick={() => { setAuthTab("login"); setAuthError(""); }}>Đăng nhập</button><button className="tab" aria-selected={authTab === "register"} onClick={() => { setAuthTab("register"); setAuthError(""); }}>Đăng ký</button></div><form onSubmit={submitAuth}>{authTab === "login" && <div className="demo"><span className="eyebrow">Thử từng vai trò</span><div className="chips">{demoAccounts.map(([id, label]) => <button type="button" className="chip" aria-pressed={username === id} key={id} onClick={() => setUsername(id)}>{label}</button>)}</div></div>}{authTab === "register" && <div className="field"><label>Họ tên</label><input className="input" value={fullName} onChange={e => setFullName(e.target.value)} required /></div>}<div className="field"><label>Tên đăng nhập</label><input className="input" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required /></div><div className="field"><label>Mật khẩu</label><input className="input" type="password" autoComplete={authTab === "login" ? "current-password" : "new-password"} value={password} onChange={e => setPassword(e.target.value)} minLength={authTab === "register" ? 8 : undefined} required /></div>{authError && <div className="alert alert-danger" role="alert">{authError}</div>}<button className="btn" disabled={busy}>{busy ? "Đang xử lý…" : authTab === "login" ? "Đăng nhập" : "Tạo tài khoản"}</button></form><div className="role-hint">Mật khẩu demo do người chạy <code>scripts/seed_users.py</code> thiết lập. Chọn vai trò chỉ điền tên đăng nhập, không đổi quyền tài khoản.</div></div></section>
+    <div className="auth-band"><div className="auth-band-in">
+      <div className="brand-row"><Logo tone="dark" /><button type="button" className="btn btn-line-light btn-compact auth-home" onClick={() => setView("home")}>← Về trang chủ</button></div>
+      <div className="auth-hero">
+        <div className="auth-copy">
+          <h1>Biết khoản nào cần thu trước, tuần nào sắp thiếu tiền.</h1>
+          <p className="lead">Công nợ từ Odoo được xếp theo mức ưu tiên và đối chiếu với tiền phải chi trong 12 tuần tới. Mọi nội dung gửi khách đều do kế toán trưởng duyệt.</p>
+        </div>
+        <AuthArt />
+      </div>
+    </div></div>
+    <section className="auth-panel"><div className="auth-card">
+      <div><h2>{authTab === "login" ? "Đăng nhập" : "Tạo tài khoản"}</h2><p className="sub">{authTab === "login" ? "Vào hệ thống quản lý công nợ." : "Dành cho khách hàng. Quản trị viên sẽ liên kết tài khoản với hồ sơ khách hàng trong Odoo."}</p></div>
+      <form onSubmit={submitAuth}>
+        {authTab === "register" && <div className="field"><label htmlFor="auth-name">Họ tên</label><input id="auth-name" className="input" value={fullName} onChange={e => setFullName(e.target.value)} required /></div>}
+        <div className="field"><label htmlFor="auth-user">Tên đăng nhập</label><input id="auth-user" className="input" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required /></div>
+        <div className="field"><label htmlFor="auth-pass">Mật khẩu</label><input id="auth-pass" className="input" type="password" autoComplete={authTab === "login" ? "current-password" : "new-password"} value={password} onChange={e => setPassword(e.target.value)} minLength={authTab === "register" ? 8 : undefined} required />{authTab === "register" && <span className="field-hint">Ít nhất 8 ký tự.</span>}</div>
+        {authError && <div className="alert alert-danger" role="alert">{authError}</div>}
+        <button className="btn btn-block" disabled={busy}>{busy ? "Đang xử lý…" : authTab === "login" ? "Đăng nhập" : "Tạo tài khoản"}</button>
+      </form>
+      {authTab === "login" && <details className="trial" key={String(trialOpen)} open={trialOpen}><summary>Dùng thử với tài khoản mẫu</summary>
+        <p>Chọn một vai trò để điền sẵn tên đăng nhập. Mật khẩu do quản trị viên cấp.</p>
+        <div className="chips">{demoAccounts.map(([id, label]) => <button type="button" className="chip" aria-pressed={username === id} key={id} onClick={() => setUsername(id)}>{label}</button>)}</div></details>}
+    </div></section>
+    <p className="auth-foot">Hệ thống chỉ đọc dữ liệu Odoo, không ghi ngược.</p>
     {toast && <div className="toast">{toast}</div>}
   </div>;
 
   const nav: { id: Page; label: string; visible: boolean }[] = [
     { id: "overview", label: "Tổng quan", visible: can("summary:read_all") || can("summary:read_own") },
-    { id: "invoices", label: can("invoice:read_all") ? "Công nợ F3" : "Hóa đơn của tôi", visible: can("invoice:read_all") || can("invoice:read_own") },
-    { id: "forecast", label: "Dự báo F4", visible: can("forecast:read") },
+    { id: "invoices", label: can("invoice:read_all") ? "Công nợ" : "Hóa đơn của tôi", visible: can("invoice:read_all") || can("invoice:read_own") },
+    { id: "forecast", label: "Dự báo dòng tiền", visible: can("forecast:read") },
     { id: "drafts", label: "Nhắc nợ", visible: can("draft:read_own") || can("draft:read_team") },
     { id: "tasks", label: "Nhiệm vụ", visible: can("task:read_own") || can("task:read_team") },
     { id: "payments", label: "Thanh toán", visible: can("payment:read_own") && !can("payment:read_all") },
     { id: "users", label: "Người dùng", visible: can("user:manage") },
     { id: "audit", label: "Nhật ký", visible: can("audit:read") },
   ];
-  return <div className="app"><aside className="sidebar"><div className="side-brand"><span className="brand-mark">✓</span><span>ThuTiền AI</span></div><nav className="side-nav" aria-label="Điều hướng chính">{nav.filter(x => x.visible).map(x => <button className="nav-link" key={x.id} aria-current={page === x.id ? "page" : undefined} onClick={() => navigate(x.id)}>{x.label}</button>)}</nav><div className="acct"><button className="acct-trigger" aria-expanded={accountOpen} onClick={() => setAccountOpen(v => !v)}><span className="avatar">{me.full_name.slice(0, 1).toUpperCase()}</span><span className="acct-text"><span className="acct-text-name">{me.full_name}</span><span className="acct-text-role">{roleName(me.role)}</span></span></button>{accountOpen && <div className="acct-menu"><div className="acct-head"><span className="acct-name">{me.full_name}</span><span className="acct-sub">@{me.username} · {roleName(me.role)}</span></div><div className="acct-items"><button className="acct-item" onClick={() => { setPasswordOpen(true); setAccountOpen(false); }}>Đổi mật khẩu</button><button className="acct-item acct-logout" onClick={logout}>Đăng xuất / đổi vai trò</button></div></div>}<button className="logout-btn" onClick={logout}>Đăng xuất</button></div></aside>
-    <main className="content">{dataError && <div className="alert alert-danger inline-alert" role="alert"><span>{dataError}</span><button aria-label="Đóng thông báo" onClick={() => setDataError("")}>×</button></div>}{busy && <div className="loading">Đang đồng bộ dữ liệu…</div>}{page === "overview" && <Overview data={data} onNavigate={navigate} />}{page === "invoices" && <Invoices data={data} isStaff={can("invoice:read_all")} canDraft={can("draft:create")} canAssign={can("task:assign")} onDrafts={() => navigate("drafts")} onTasks={() => navigate("tasks")} act={act} />}{page === "forecast" && <ForecastPage forecast={data.forecast} obligations={data.obligations} canEdit={can("obligation:write")} act={act} />}{page === "drafts" && <Reminders data={data} viewerId={me.id} canCreate={can("draft:create")} canDecide={can("draft:decide")} act={act} />}{page === "tasks" && <Tasks data={data} canAssign={can("task:assign")} act={act} />}{page === "payments" && <Customers data={data} />}{page === "users" && <AdminUsers data={data} act={act} />}{page === "audit" && <Audit data={data} />}<div className="form-actions"><button className="btn btn-secondary btn-compact" onClick={refresh} disabled={busy}>Tải lại dữ liệu</button><span className="micro">Mọi số liệu Odoo được đọc lại khi tải trang hoặc bấm nút này.</span></div></main>
-    {passwordOpen && <div className="modal-backdrop"><form className="auth-card modal-card" onSubmit={changePassword}><h2>Đổi mật khẩu</h2><div className="field"><label>Mật khẩu hiện tại</label><input className="input" type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} required /></div><div className="field"><label>Mật khẩu mới</label><input className="input" type="password" minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} required /></div><div className="form-actions"><button className="btn" disabled={busy}>Lưu mật khẩu</button><button className="btn btn-secondary" type="button" onClick={() => setPasswordOpen(false)}>Hủy</button></div></form></div>}
-    {toast && <div className="toast">✓ {toast}</div>}
+  return <div className="app">
+    <header className="topnav"><div className="topnav-in">
+      <div className="topnav-brand"><Logo /></div>
+      <nav className="topnav-links" aria-label="Điều hướng chính">{nav.filter(x => x.visible).map(x => <button className="topnav-link" key={x.id} aria-current={page === x.id ? "page" : undefined} onClick={() => navigate(x.id)}>{x.label}</button>)}</nav>
+      <div className="topnav-end">
+        {busy && <span className="sync"><span className="spinner" aria-hidden="true" />Đang đồng bộ…</span>}
+        <button className="icon-btn" onClick={refresh} disabled={busy} title="Đọc lại dữ liệu từ Odoo" aria-label="Tải lại dữ liệu"><Icon name="refresh" size={18} /></button>
+        <div className="acct"><button className="acct-trigger" aria-expanded={accountOpen} aria-haspopup="menu" onClick={() => setAccountOpen(v => !v)}><span className="avatar">{me.full_name.slice(0, 1).toUpperCase()}</span><span className="acct-text"><span className="acct-text-name">{me.full_name}</span><span className="acct-text-role">{roleName(me.role)}</span></span><Icon name="chevron" size={16} /></button>
+          {accountOpen && <div className="acct-menu" role="menu"><div className="acct-head"><span className="acct-name">{me.full_name}</span><span className="acct-sub">@{me.username} · {roleName(me.role)}</span></div><div className="acct-items"><button className="acct-item" role="menuitem" onClick={() => { setPasswordOpen(true); setAccountOpen(false); }}><span className="acct-item-label"><Icon name="key" size={16} />Đổi mật khẩu</span></button><button className="acct-item acct-logout" role="menuitem" onClick={logout}><span className="acct-item-label"><Icon name="logout" size={16} />Đăng xuất / đổi vai trò</span></button></div></div>}</div>
+      </div>
+    </div></header>
+    <main className="content">{dataError && <div className="alert alert-danger inline-alert" role="alert"><span>{dataError}</span><button aria-label="Đóng thông báo" onClick={() => setDataError("")}>×</button></div>}{page === "overview" && <Overview data={data} onNavigate={navigate} />}{page === "invoices" && <Invoices data={data} isStaff={can("invoice:read_all")} canDraft={can("draft:create")} canAssign={can("task:assign")} onDrafts={() => navigate("drafts")} onTasks={() => navigate("tasks")} act={act} />}{page === "forecast" && <ForecastPage forecast={data.forecast} obligations={data.obligations} canEdit={can("obligation:write")} act={act} />}{page === "drafts" && <Reminders data={data} viewerId={me.id} canCreate={can("draft:create")} canDecide={can("draft:decide")} act={act} />}{page === "tasks" && <Tasks data={data} canAssign={can("task:assign")} act={act} />}{page === "payments" && <Customers data={data} />}{page === "users" && <AdminUsers data={data} act={act} />}{page === "audit" && <Audit data={data} />}<footer className="page-foot">Dữ liệu đồng bộ từ Odoo, chỉ đọc. Hệ thống không ghi ngược vào Odoo.</footer></main>
+    {passwordOpen && <div className="modal-backdrop"><form className="auth-card modal-card" onSubmit={changePassword}><h2>Đổi mật khẩu</h2><div className="field"><label htmlFor="pw-old">Mật khẩu hiện tại</label><input id="pw-old" className="input" type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} required /></div><div className="field"><label htmlFor="pw-new">Mật khẩu mới</label><input id="pw-new" className="input" type="password" minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} required /></div><div className="form-actions"><button className="btn" disabled={busy}>Lưu mật khẩu</button><button className="btn btn-secondary" type="button" onClick={() => setPasswordOpen(false)}>Hủy</button></div></form></div>}
+    {toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}
   </div>;
 }

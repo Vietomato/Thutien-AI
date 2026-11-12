@@ -13,7 +13,7 @@ const week = (start: string, p25: number, p50: number, p75: number, out: number)
 });
 
 test("scenarios map to the three quantiles and warn on the late one", () => {
-  assert.deepEqual(SCENARIOS.map(s => s.field), ["receipt_p25", "receipt_p50", "receipt_p75"]);
+  assert.deepEqual(SCENARIOS.map(s => s.field), ["receipt_p25", "receipt_expected", "receipt_p75"]);
   assert.equal(LATE.field, "receipt_p75");
 });
 
@@ -106,4 +106,18 @@ test("an empty or all-zero forecast is recognised so the screen can say so", () 
   assert.equal(hasAnyMoney([]), false);
   assert.equal(hasAnyMoney([week("a", 0, 0, 0, 0)]), false);
   assert.equal(hasAnyMoney([week("a", 0, 0, 0, 1)]), true);
+});
+
+test("the middle line uses the probability-weighted figure and falls back to the median line for an older API", () => {
+  const usual = SCENARIOS[1];
+  const withExpected = { ...week("2026-11-09", 100 * M, 200 * M, 300 * M, 0), receipt_expected: 250 * M };
+  assert.equal(receiptOf(withExpected, usual), 250 * M);
+  assert.equal(receiptOf(week("2026-11-09", 100 * M, 200 * M, 300 * M, 0), usual), 200 * M);   // no receipt_expected sent
+  assert.equal(summarize([withExpected]).totalReceipts.usual, 250 * M);
+  assert.equal(summarize([withExpected]).totalReceipts.early, 100 * M);
+  assert.equal(summarize([withExpected]).totalReceipts.late, 300 * M);
+});
+
+test("a forecast that only has the expected figure still counts as having money", () => {
+  assert.equal(hasAnyMoney([{ ...week("a", 0, 0, 0, 0), receipt_expected: 5 }]), true);
 });
