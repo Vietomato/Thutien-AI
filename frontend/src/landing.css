@@ -202,3 +202,9 @@
   .lp-footer { border-radius: 36px 36px 0 0; padding-top: 48px; }
   .lp-ribbon-group span { font-size: 17px; padding: 14px 22px 14px 0; }
 }
+
+/* the forecast tile shows the flight-plan drawing instead of a screenshot */
+.lp-tile-plan { flex: 1; align-self: stretch; display: flex; align-items: center; padding: 36px 40px 36px 0; }
+.lp-deck-flat { width: 100%; transform: none; background: rgba(255, 255, 255, .06); border: 1px solid rgba(142, 209, 255, .25); box-shadow: none; }
+@media (max-width: 1100px) { .lp-tile-plan { padding: 0 32px 32px 0; } }
+@media (max-width: 760px) { .lp-tile-plan { padding: 0 24px 24px 0; } }

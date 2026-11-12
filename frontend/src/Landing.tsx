@@ -12,8 +12,6 @@ const SAMPLE_WEEKS: WeekRow[] = SAMPLE_ROWS.map(([late, out], i) => ({
   week_start: addDays("2026-11-09", i * 7), receipt_p25: late * M, receipt_p50: late * M, receipt_p75: late * M, obligations: out * M, gap_p75: Math.max(out - late, 0) * M,
 }));
 
-// Screens are real captures of the app running on the simulated demo company (see public/shots).
-const SHOT = (name: string) => `/app/shots/${name}.jpg`;
 const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
 /** Fades blocks in as they scroll into view (skipped when the visitor prefers reduced motion). */
@@ -55,25 +53,15 @@ function CountUp({ to, suffix = "" }: { to: number; suffix?: string }) {
   return <span ref={ref}>{value}{suffix}</span>;
 }
 
-const TABS = [
-  { key: "overview", label: "Tổng quan", title: "Một câu trả lời cho câu hỏi đầu tiên mỗi sáng", text: "Bao nhiêu tuần có nguy cơ thiếu tiền, tuần nào nặng nhất, và khoản nào nên thu trước." },
-  { key: "invoices", label: "Công nợ", title: "Danh sách khoản cần thu, xếp theo mức ưu tiên", text: "Số dư, hạn trả, ngày trả dự đoán và lý do xếp hạng của từng hóa đơn mở." },
-  { key: "forecast", label: "Dự báo dòng tiền", title: "Thu và chi 12 tuần, ba kịch bản", text: "Chọn khách trả sớm, theo thói quen hay trả muộn. Tuần nào thu chưa đủ chi được tô đỏ kèm số tiền thiếu." },
-  { key: "drafts", label: "Nhắc nợ", title: "Nháp nhắc nợ chờ kế toán trưởng duyệt", text: "Số liệu trong nháp được đối chiếu lại với Odoo. Duyệt hay từ chối đều được ghi lại." },
-] as const;
-
 const RIBBON = ["Chỉ đọc Odoo", "12 tuần dự báo", "3 kịch bản", "Kế toán trưởng duyệt", "Nhật ký đầy đủ", "Số do code tính"];
 
 export function Landing({ onLogin, onTrial }: { onLogin: () => void; onTrial: () => void }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("overview");
   useReveal();
-  const current = TABS.find(t => t.key === tab) ?? TABS[0];
   return <div className="lp lp-js">
     <header className="lp-nav"><div className="lp-wrap lp-nav-in">
       <a className="lp-brand" href="/app/" onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}><Logo size={38} /></a>
       <nav className="lp-links" aria-label="Trang chủ">
         <button onClick={() => go("tinh-nang")}>Tính năng</button>
-        <button onClick={() => go("man-hinh")}>Màn hình</button>
         <button onClick={() => go("an-toan")}>An toàn</button>
         <button onClick={() => go("hoi-dap")}>Hỏi đáp</button>
       </nav>
@@ -86,7 +74,7 @@ export function Landing({ onLogin, onTrial }: { onLogin: () => void; onTrial: ()
           <span className="lp-chip"><i />Trợ lý công nợ và dòng tiền cho doanh nghiệp dùng Odoo</span>
           <h1>Biết khoản nào <mark>cần thu trước</mark>, <em>tuần nào sắp thiếu tiền.</em></h1>
           <p className="lp-lead">CashPilot đọc hóa đơn trong Odoo, dự đoán khách sẽ trả vào lúc nào và đối chiếu với tiền phải chi trong 12 tuần tới. Mọi nội dung nhắc nợ đều do kế toán trưởng duyệt trước khi dùng.</p>
-          <div className="lp-cta"><button className="lp-btn lp-btn-lime" onClick={onTrial}>Đăng nhập</button><button className="lp-btn lp-btn-line" onClick={() => go("man-hinh")}>Xem màn hình</button></div>
+          <div className="lp-cta"><button className="lp-btn lp-btn-lime" onClick={onTrial}>Đăng nhập</button><button className="lp-btn lp-btn-line" onClick={() => go("tinh-nang")}>Xem tính năng</button></div>
         </div>
         <div className="lp-art" aria-label="Minh họa kế hoạch bay 12 tuần trên dữ liệu giả lập">
           <div className="lp-blob" />
@@ -123,7 +111,7 @@ export function Landing({ onLogin, onTrial }: { onLogin: () => void; onTrial: ()
               <p>Tiền thu dự kiến được cộng theo từng tuần ở ba kịch bản, rồi so với tiền phải chi để báo tuần nào còn thiếu bao nhiêu. Chi lấy từ hóa đơn nhà cung cấp trong Odoo và khoản kế toán nhập tay.</p>
               <ul><li>Cảnh báo dựa trên kịch bản khách trả muộn</li><li>Thử sức chịu đựng, không phải cam kết</li></ul>
             </div>
-            <div className="lp-tile-shot"><img src={SHOT("forecast")} alt="Màn hình Dự báo dòng tiền" width="1440" height="1100" /></div>
+            <div className="lp-tile-plan"><div className="lp-deck lp-deck-flat"><div className="lp-deck-bar"><i /><b>KẾ HOẠCH BAY · 12 TUẦN</b><em>Dữ liệu giả lập</em></div><FlightPath weeks={SAMPLE_WEEKS} /></div></div>
           </article>
 
           <article className="lp-tile lp-tile-mint rv">
@@ -152,20 +140,7 @@ export function Landing({ onLogin, onTrial }: { onLogin: () => void; onTrial: ()
             <p>Mỗi thao tác ghi người và thời điểm. Mỗi vai trò chỉ thấy phần việc của mình.</p>
           </article>
         </div>
-        <p className="lp-note">Hình trong các thẻ nhỏ là minh họa. Ảnh màn hình ở trang này chụp từ ứng dụng chạy trên dữ liệu giả lập.</p>
-      </div>
-    </section>
-
-    <section className="lp-section lp-ink" id="man-hinh">
-      <div className="lp-wrap">
-        <div className="lp-head lp-head-light rv"><h2>Xem từng màn hình, <em>như kế toán thấy hằng ngày.</em></h2></div>
-        <div className="lp-tabs rv" role="tablist" aria-label="Màn hình ứng dụng">
-          {TABS.map(t => <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}>{t.label}</button>)}
-        </div>
-        <div className="lp-showcase rv">
-          <div className="lp-showcase-copy"><h3>{current.title}</h3><p>{current.text}</p></div>
-          <div className="lp-laptop"><div className="lp-laptop-screen"><img key={current.key} className="lp-swap" src={SHOT(current.key)} alt={`Màn hình ${current.label}`} /></div></div>
-        </div>
+        <p className="lp-note">Hình và số liệu trên trang này là minh họa, vẽ từ dữ liệu giả lập.</p>
       </div>
     </section>
 
