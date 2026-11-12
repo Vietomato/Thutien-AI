@@ -1,0 +1,75 @@
+/* F4 forecast screen. Uses the shared design tokens (colors, radii) from layout.css / index.css. */
+
+.f4-card { --f4-short: #FDE7E4; --f4-short-edge: #F2A9A1; --f4-short-hover: #FBD9D4;
+  display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.f4-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.f4-head h2 { margin: 0; }
+.f4-sub { margin: 4px 0 0; font-size: 13px; line-height: 1.55; color: var(--muted); max-width: 56ch; }
+.f4-hint { margin: 0; padding: 10px 12px; font-size: 13px; line-height: 1.5; color: var(--text); background: var(--teal-soft); border-radius: var(--radius-control); }
+
+/* scenario picker */
+.f4-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: #F1F4F8; border-radius: var(--radius-control); }
+.f4-seg button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 12px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.25; text-align: left; }
+.f4-seg button small { font-size: 11px; font-weight: 500; opacity: .9; }
+.f4-seg button:hover { color: var(--text); }
+.f4-seg button[aria-pressed="true"] { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(11, 31, 58, .16); }
+.f4-seg button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+/* legend */
+.f4-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--muted); }
+.f4-legend li { display: flex; align-items: center; gap: 7px; }
+.f4-key { display: inline-block; width: 14px; height: 14px; border-radius: 3px; }
+.f4-key-in { background: var(--teal-bright); border: 1px solid var(--teal); }
+.f4-key-out { background: var(--navy); }
+.f4-key-short { background: var(--f4-short); border: 1px solid var(--f4-short-edge); }
+
+/* chart */
+.f4-scroll { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+.f4-svg { display: block; max-width: none; font-family: inherit; user-select: none; }
+.f4-swipe { margin: 0; font-size: 12px; color: var(--muted); }
+.f4-grid { stroke: var(--border); stroke-width: 1; }
+.f4-axis { stroke: var(--input-border); stroke-width: 1.5; }
+.f4-ylabel { fill: var(--muted); font-size: 12px; }
+.f4-xdate { fill: var(--text); font-size: 12.5px; font-weight: 600; }
+.f4-xweek { fill: var(--muted); font-size: 10.5px; }
+.f4-gaplabel { fill: var(--danger); font-size: 12px; font-weight: 700; }
+.f4-week { cursor: pointer; outline: none; }
+.f4-col { fill: transparent; stroke: transparent; stroke-width: 1; }
+.f4-week:hover .f4-col { fill: rgba(11, 31, 58, .045); }
+.f4-week.is-short .f4-col { fill: var(--f4-short); stroke: var(--f4-short-edge); }
+.f4-week.is-short:hover .f4-col { fill: var(--f4-short-hover); }
+.f4-week.is-active .f4-col { stroke: var(--navy); stroke-width: 1.6; }
+.f4-week:focus-visible .f4-col { stroke: var(--teal); stroke-width: 2.6; }
+.f4-in { fill: var(--teal-bright); stroke: var(--teal); stroke-width: 1; }
+.f4-out { fill: var(--navy); }
+
+/* detail strip under the chart */
+.f4-detail { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-control); background: #FBFCFD; }
+.f4-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 14px; }
+.f4-status { padding: 3px 10px; border-radius: var(--radius-pill); font-size: 12.5px; font-weight: 700; }
+.f4-status.bad { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+.f4-status.ok { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+.f4-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 12px 0 0; }
+.f4-detail-grid > div { padding: 10px 12px; background: #fff; border: 1px solid var(--border); border-radius: 8px; }
+.f4-detail-grid > div.is-current { border-color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); }
+.f4-detail-grid dt { font-size: 12px; color: var(--muted); }
+.f4-detail-grid dd { margin: 2px 0 0; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.f4-note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.f4-summary { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text); }
+.f4-bad { color: var(--danger); }
+.f4-ok { color: var(--success); }
+
+/* page parts */
+.f4-gaprow { display: inline-flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.f4-gaptrack { display: inline-block; width: 120px; height: 8px; border-radius: 4px; background: #F2F4F7; overflow: hidden; }
+.f4-gapbar { display: block; height: 100%; border-radius: 4px; background: var(--danger); }
+.table tr.f4-row-short td { background: #FFF8F7; }
+.table tr.f4-row-short td:last-child { color: var(--danger); font-weight: 700; }
+.f4-sources { color: var(--muted); font-size: 13px; }
+
+@media (max-width: 640px) {
+  .f4-seg { width: 100%; }
+  .f4-seg button { flex: 1 1 30%; }
+  .f4-detail-grid dd { font-size: 18px; }
+}
