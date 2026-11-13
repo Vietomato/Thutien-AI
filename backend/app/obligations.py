@@ -4,7 +4,7 @@ They add to the supplier bills read from Odoo: the F4 forecast compares receipts
 created by schema.sql, like the other application tables."""
 from .db import connect
 
-_SELECT = ("SELECT o.id, o.description, o.amount, o.currency, o.due_date, o.created_by, u.username AS created_by_username, "
+_SELECT = ("SELECT o.id, o.description, o.amount, o.currency, o.due_date, o.late_fee_percent_per_month, o.created_by, u.username AS created_by_username, "
            "o.created_at FROM obligations o JOIN users u ON u.id = o.created_by")
 
 
@@ -12,14 +12,16 @@ def _row(r: dict) -> dict:
     r = dict(r)
     r["due_date"] = r["due_date"].isoformat()
     r["created_at"] = r["created_at"].isoformat()
+    fee = r.get("late_fee_percent_per_month")
+    r["late_fee_percent_per_month"] = float(fee) if fee is not None else None
     return r
 
 
-def create(description: str, amount: int, due_date, created_by: int) -> dict:
+def create(description: str, amount: int, due_date, created_by: int, late_fee_percent_per_month: float | None = None) -> dict:
     with connect() as conn:
         new_id = conn.execute(
-            "INSERT INTO obligations (description, amount, due_date, created_by) VALUES (%s, %s, %s, %s) RETURNING id",
-            (description.strip(), amount, due_date, created_by),
+            "INSERT INTO obligations (description, amount, due_date, late_fee_percent_per_month, created_by) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (description.strip(), amount, due_date, late_fee_percent_per_month, created_by),
         ).fetchone()["id"]
     return get(new_id)  # type: ignore[return-value]
 

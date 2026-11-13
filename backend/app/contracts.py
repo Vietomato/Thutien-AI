@@ -42,5 +42,6 @@ class Week(BaseModel):
     receipt_p25: int
     receipt_p50: int
     receipt_p75: int
+    receipt_expected: Optional[int] = None   # probability-weighted receipts (the best single estimate)
     obligations: int
     gap_p75: int

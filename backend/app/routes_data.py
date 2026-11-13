@@ -53,20 +53,22 @@ def predictions():
 
 @router.get("/forecast", dependencies=[Depends(require_permission("forecast:read"))])
 def forecast():
-    """Receipts per week under three scenarios against outgoings: supplier bills read from Odoo plus the
+    """Receipts per week (early / usual / late scenario, plus the probability-weighted expected figure) against outgoings: supplier bills read from Odoo plus the
     expected outgoings the accountant typed in. Money beyond the last week is reported, not dropped."""
     as_of = as_of_date()
     invoices = odoo_reader.open_invoices()
-    preds = analytics.predict(invoices, odoo_reader.paid_delays(as_of), as_of)
+    delays = odoo_reader.paid_delays(as_of)
+    preds = analytics.predict(invoices, delays, as_of)
     odoo_bills = odoo_reader.supplier_bills()
     manual = obligations.list_all()
     bills = odoo_bills + [(date.fromisoformat(o["due_date"]), o["amount"]) for o in manual]
-    weeks = analytics.forecast(invoices, preds, bills, as_of)
+    weeks = analytics.forecast(invoices, preds, bills, as_of, expected=analytics.expected_receipts(invoices, delays, as_of))
     return envelope(
         weeks=[w.model_dump(mode="json") for w in weeks],
         risky_weeks=sum(1 for w in weeks if w.gap_p75 > 0),
         alerts=[{"week_start": w.week_start.isoformat(), "receipt_p75": w.receipt_p75,
                  "obligations": w.obligations, "gap_p75": w.gap_p75} for w in weeks if w.gap_p75 > 0],
+        week_invoices=analytics.week_contributions(invoices, delays, as_of),
         receipts_out_of_horizon=analytics.beyond_horizon(invoices, preds, as_of),
         obligations_out_of_horizon=analytics.bills_beyond_horizon(bills, as_of),
         obligations_sources={"odoo_supplier_bills": sum(a for _, a in odoo_bills),

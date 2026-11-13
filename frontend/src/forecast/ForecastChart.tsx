@@ -23,6 +23,23 @@ function useWidth<T extends HTMLElement>(active: boolean) {
   return [ref, width] as const;
 }
 
+/** The invoices that make up one week's expected receipts: amount x the probability the customer pays that week. */
+function Contributors({ week }: { week?: Row }) {
+  if (!week) return null;
+  const items: Row[] = week.items ?? [];
+  if (!items.length) return <p className="f4-note">Tuần này chưa có hóa đơn nào được kỳ vọng thu.</p>;
+  return <section className="f4-contrib" aria-label="Hóa đơn kỳ vọng thu trong tuần đang chọn">
+    <h3>Hóa đơn kỳ vọng thu trong tuần này</h3>
+    <p className="f4-note">Đây là các hóa đơn tạo nên số ở cột “theo thói quen”: số tiền còn nợ × xác suất khách trả trong tuần này, rút ra từ lịch sử trả của từng khách.</p>
+    <ul>{items.map(r => <li key={r.invoice_id}>
+      <div><strong>{r.display_name}</strong><small>{r.invoice_id} · còn nợ {compactMoney(toNumber(r.remaining_amount))}</small></div>
+      <span className="f4-prob" title="Xác suất trả trong tuần này">{Math.round(toNumber(r.probability) * 100)}%</span>
+      <b title={money(r.expected_amount)}>{compactMoney(toNumber(r.expected_amount))}</b>
+    </li>)}</ul>
+    {toNumber(week.more_count) > 0 && <p className="f4-more">và {week.more_count} hóa đơn khác, tổng kỳ vọng {compactMoney(toNumber(week.more_amount))}</p>}
+  </section>;
+}
+
 /**
  * Money coming in against money going out, week by week.
  * One scenario is drawn at a time (default: customers pay late, the scenario the warnings use), so the picture never
@@ -58,7 +75,7 @@ export function ForecastChart({ forecast, compact = false, initialScenario = "la
   const plotW = W - m.l - m.r;
   const plotH = H - m.t - m.b;
   // One scale for every scenario, so switching scenario changes the bars but never the axis.
-  const maxValue = Math.max(0, ...weeks.flatMap(w => [w.receipt_p25, w.receipt_p50, w.receipt_p75, w.obligations].map(toNumber)));
+  const maxValue = Math.max(0, ...weeks.flatMap(w => [w.receipt_p25, w.receipt_p50, w.receipt_p75, w.receipt_expected, w.obligations].map(toNumber)));
   const scale = niceScale(maxValue);
   const y = (v: number) => m.t + plotH - (Math.max(v, 0) / scale.top) * plotH;
   const slot = plotW / weeks.length;
@@ -125,7 +142,7 @@ export function ForecastChart({ forecast, compact = false, initialScenario = "la
 
     {compact
       ? <p className="f4-summary">{summary.riskyWeeks
-          ? <><strong className="f4-bad">{summary.riskyWeeks} tuần</strong> có nguy cơ thiếu tiền nếu khách trả muộn. Thiếu nhiều nhất <strong>{compactMoney(summary.worstGap)}</strong> (tuần {weekRange(weeks[summary.worstIndex].week_start)}). Xem chi tiết ở mục Dự báo F4.</>
+          ? <><strong className="f4-bad">{summary.riskyWeeks} tuần</strong> có nguy cơ thiếu tiền nếu khách trả muộn. Thiếu nhiều nhất <strong>{compactMoney(summary.worstGap)}</strong> (tuần {weekRange(weeks[summary.worstIndex].week_start)}). Xem chi tiết ở mục Dự báo dòng tiền.</>
           : <>Không có tuần nào thiếu tiền, kể cả khi khách trả muộn.</>}</p>
       : <section className="f4-detail" aria-live="polite" aria-label="Chi tiết tuần đang chọn">
           <div className="f4-detail-head">
@@ -140,5 +157,6 @@ export function ForecastChart({ forecast, compact = false, initialScenario = "la
           </dl>
           <p className="f4-note">Thiếu = chi trừ thu, theo kịch bản “{scenario.label.toLowerCase()}”. Đây không phải số dư tiền mặt vì hệ thống chưa biết số dư đầu kỳ.</p>
         </section>}
+    {!compact && <Contributors week={(forecast?.week_invoices as Row[] | undefined)?.[active]} />}
   </article>;
 }

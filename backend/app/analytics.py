@@ -9,13 +9,22 @@ Prediction method
   - Overdue invoice: only delays at least as long as the current overdue count are plausible, so we keep
     those. If every past delay was shorter than the current overdue, the invoice is already later than
     anything seen; we then count the typical delay from the as_of date (overdue_adjusted).
-  - Disputed invoices get no prediction (they are not chased automatically either)."""
-from collections import defaultdict
+  - Disputed invoices get no prediction (they are not chased automatically either).
+
+Expected receipts (the best single estimate of the money arriving each week)
+  The three scenarios above put a whole invoice on one date. A backtest on 15 later dates of a public payment file
+  (research/payment_ml/cashflow.py) found that spreading each invoice over the weeks it may be paid, by probability, cut the weekly
+  error of the middle line from 21.3% to about 16.7% and the 2-week cumulative error from 9.7% to 4.6%. expected_receipts does that:
+  the customer's own delays are blended with everyone's (weight n / (n + SHRINK_K)), delays shorter than the days already overdue are
+  removed, and each invoice contributes amount x probability to every week. The early (P25) and late (P75) lines stay as they are:
+  they are stress scenarios, not forecasts, and the shortfall alert still uses the late one."""
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 
 from .contracts import Invoice, Prediction, Week
 
 MIN_HISTORY = 5
+SHRINK_K = 2.0        # chosen on the earlier dates of the backtest; k between 1 and 5 made little difference
 WEEKS = 12
 
 
@@ -82,9 +91,10 @@ def _week_index(day: date, as_of: date) -> int:
 
 
 def forecast(invoices: list[Invoice], predictions: list[Prediction], bills: list[tuple[date, int]],
-             as_of: date, weeks: int = WEEKS) -> list[Week]:
+             as_of: date, weeks: int = WEEKS, expected: list[int] | None = None) -> list[Week]:
     """Per week: expected receipts under the early (P25), middle (P50) and late (P75) scenario, and the
-    money that must go out (supplier bills due that week; bills already overdue count in week 1)."""
+    money that must go out (supplier bills due that week; bills already overdue count in week 1).
+    `expected` (from expected_receipts) is carried alongside as receipt_expected."""
     amount = {i.invoice_id: i.remaining_amount for i in invoices}
     receipts = {"p25": [0] * weeks, "p50": [0] * weeks, "p75": [0] * weeks}
     for p in predictions:
@@ -101,9 +111,86 @@ def forecast(invoices: list[Invoice], predictions: list[Prediction], bills: list
     return [
         Week(week_start=as_of + timedelta(days=7 * i),
              receipt_p25=receipts["p25"][i], receipt_p50=receipts["p50"][i], receipt_p75=receipts["p75"][i],
+             receipt_expected=expected[i] if expected is not None else None,
              obligations=obligations[i], gap_p75=max(obligations[i] - receipts["p75"][i], 0))
         for i in range(weeks)
     ]
+
+
+def _week_probabilities(inv: Invoice, by_customer: dict[str, list[int]], everyone: Counter, total_all: int,
+                        as_of: date, weeks: int, shrink_k: float, shift: int = 0) -> list[float]:
+    """P(this invoice is paid in each of the next `weeks` weeks). Probability beyond the last week is not listed.
+    `shift` moves every payment date by that many days (a what-if: this customer pays later, or earlier, than predicted);
+    a payment cannot move before today."""
+    probs = [0.0] * weeks
+    due_offset = (inv.due_date - as_of).days
+    if total_all < MIN_HISTORY:                           # nothing to learn from: paid on the due date (or today if overdue)
+        week = max(max(due_offset, 0) + shift, 0) // 7
+        if week < weeks:
+            probs[week] = 1.0
+        return probs
+    own = Counter(by_customer.get(inv.customer_id, []))
+    n = sum(own.values())
+    lam = n / (n + shrink_k) if n else 0.0
+    mix: dict[int, float] = defaultdict(float)
+    for d, c in everyone.items():
+        mix[d] += (1 - lam) * c / total_all
+    for d, c in own.items():
+        mix[d] += lam * c / n
+    overdue = -due_offset
+    kept = {d: w for d, w in mix.items() if d >= overdue}
+    mass = sum(kept.values())
+    if mass > 1e-9:                                       # still open: only delays at least as long as the days overdue remain
+        slots = ((due_offset + d, w / mass) for d, w in kept.items())
+    else:                                                 # later than anything on record: count the typical delay from today
+        slots = ((max(1, d), w) for d, w in mix.items())
+    for offset, w in slots:
+        week = max(offset + shift, 0) // 7
+        if 0 <= week < weeks:
+            probs[week] += w
+    return probs
+
+
+def expected_receipts(invoices: list[Invoice], delays: list[tuple[str, int]], as_of: date, weeks: int = WEEKS,
+                      shrink_k: float = SHRINK_K, shifts: dict[str, int] | None = None) -> list[int]:
+    """Expected money arriving in each of the next `weeks` weeks: sum over open invoices of amount x P(paid that week).
+    Disputed invoices are left out, as in predict(). `shifts` maps a customer id to extra days of delay (what-if)."""
+    by_customer = group_delays(delays)
+    everyone = Counter(d for _, d in delays)
+    total_all = sum(everyone.values())
+    shifts = shifts or {}
+    received = [0.0] * weeks
+    for inv in invoices:
+        if inv.dispute_status == "disputed":
+            continue
+        probs = _week_probabilities(inv, by_customer, everyone, total_all, as_of, weeks, shrink_k, shifts.get(inv.customer_id, 0))
+        for w, p in enumerate(probs):
+            received[w] += inv.remaining_amount * p
+    return [round(x) for x in received]
+
+
+def week_contributions(invoices: list[Invoice], delays: list[tuple[str, int]], as_of: date, weeks: int = WEEKS,
+                       top: int = 8, min_probability: float = 0.005, shrink_k: float = SHRINK_K) -> list[dict]:
+    """For each week, which invoices make up the expected receipts: the `top` largest by expected amount, then the count and
+    amount of the rest. Lets a screen answer "why does this week show that much?" from the same numbers as expected_receipts."""
+    by_customer = group_delays(delays)
+    everyone = Counter(d for _, d in delays)
+    total_all = sum(everyone.values())
+    per_week: list[list[dict]] = [[] for _ in range(weeks)]
+    for inv in invoices:
+        if inv.dispute_status == "disputed":
+            continue
+        for w, p in enumerate(_week_probabilities(inv, by_customer, everyone, total_all, as_of, weeks, shrink_k)):
+            if p >= min_probability:
+                per_week[w].append({"invoice_id": inv.invoice_id, "customer_id": inv.customer_id, "display_name": inv.display_name,
+                                    "remaining_amount": inv.remaining_amount, "probability": round(p, 3),
+                                    "expected_amount": round(inv.remaining_amount * p)})
+    out = []
+    for rows in per_week:
+        rows.sort(key=lambda r: r["expected_amount"], reverse=True)
+        rest = rows[top:]
+        out.append({"items": rows[:top], "more_count": len(rest), "more_amount": sum(r["expected_amount"] for r in rest)})
+    return out
 
 
 def beyond_horizon(invoices: list[Invoice], predictions: list[Prediction], as_of: date, weeks: int = WEEKS) -> dict[str, int]:

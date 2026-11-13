@@ -9,7 +9,7 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test src/forecast/forecastMath.test.ts"
+    "test": "node --test src/forecast/forecastMath.test.ts src/forecast/predictionMath.test.ts src/chatMarkdown.test.ts"
   },
   "dependencies": {
     "react": "^19.3.1",

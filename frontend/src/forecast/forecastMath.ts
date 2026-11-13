@@ -6,6 +6,7 @@ export type WeekRow = {
   receipt_p25: number;
   receipt_p50: number;
   receipt_p75: number;
+  receipt_expected?: number;       // probability-weighted receipts; absent on an older API
   obligations: number;
   gap_p75: number;
 };
@@ -14,7 +15,8 @@ export type ScenarioKey = "early" | "usual" | "late";
 
 export type Scenario = {
   key: ScenarioKey;
-  field: "receipt_p25" | "receipt_p50" | "receipt_p75";
+  field: "receipt_p25" | "receipt_expected" | "receipt_p75";
+  fallback?: "receipt_p50";        // used when the API does not send `field`
   label: string;
   short: string;
   statistic: string;
@@ -24,11 +26,11 @@ export type Scenario = {
 // P25 / P50 / P75 are the quantiles of how late each customer used to pay. In everyday words:
 // early = money arrives sooner than in 3 of 4 past cases, late = later than in 3 of 4 past cases.
 export const SCENARIOS: readonly Scenario[] = [
-  { key: "early", field: "receipt_p25", label: "Khách trả sớm", short: "Sớm", statistic: "P25",
+  { key: "early", field: "receipt_p25", label: "Khách trả sớm", short: "Sớm", statistic: "Tiền về sớm",
     hint: "Tiền về sớm: trong 4 lần trước, chỉ 1 lần khách trả nhanh hơn mức này." },
-  { key: "usual", field: "receipt_p50", label: "Khách trả theo thói quen", short: "Thói quen", statistic: "P50",
-    hint: "Tiền về như thường lệ: một nửa số lần trước khách trả sớm hơn, một nửa muộn hơn." },
-  { key: "late", field: "receipt_p75", label: "Khách trả muộn", short: "Muộn", statistic: "P75",
+  { key: "usual", field: "receipt_expected", fallback: "receipt_p50", label: "Khách trả theo thói quen", short: "Thói quen", statistic: "Kỳ vọng theo xác suất",
+    hint: "Kỳ vọng: mỗi hóa đơn được chia vào các tuần khách có thể trả, theo xác suất rút ra từ lịch sử trả của khách đó." },
+  { key: "late", field: "receipt_p75", label: "Khách trả muộn", short: "Muộn", statistic: "Tiền về muộn",
     hint: "Tiền về muộn: trong 4 lần trước, chỉ 1 lần khách trả chậm hơn mức này. Cảnh báo thiếu tiền dùng kịch bản này." },
 ] as const;
 
@@ -39,7 +41,8 @@ export const toNumber = (value: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export const receiptOf = (week: WeekRow, scenario: Scenario): number => toNumber(week[scenario.field]);
+export const receiptOf = (week: WeekRow, scenario: Scenario): number =>
+  toNumber(week[scenario.field] ?? (scenario.fallback ? week[scenario.fallback] : undefined));
 
 /** Money going out that the receipts of the chosen scenario do not cover in that week (never negative). */
 export const gapOf = (week: WeekRow, scenario: Scenario): number =>
@@ -124,9 +127,9 @@ export const summarize = (weeks: WeekRow[], scenario: Scenario = LATE): Summary 
     weeks: weeks.length, riskyWeeks, worstIndex, worstGap,
     totalObligations: sum(w => toNumber(w.obligations)),
     totalReceipts: {
-      early: sum(w => toNumber(w.receipt_p25)),
-      usual: sum(w => toNumber(w.receipt_p50)),
-      late: sum(w => toNumber(w.receipt_p75)),
+      early: sum(w => receiptOf(w, SCENARIOS[0])),
+      usual: sum(w => receiptOf(w, SCENARIOS[1])),
+      late: sum(w => receiptOf(w, SCENARIOS[2])),
     },
   };
 };
@@ -138,4 +141,4 @@ export const defaultWeek = (weeks: WeekRow[], scenario: Scenario): number => {
 };
 
 export const hasAnyMoney = (weeks: WeekRow[]): boolean =>
-  weeks.some(w => toNumber(w.receipt_p25) + toNumber(w.receipt_p50) + toNumber(w.receipt_p75) + toNumber(w.obligations) > 0);
+  weeks.some(w => toNumber(w.receipt_p25) + toNumber(w.receipt_p50) + toNumber(w.receipt_p75) + toNumber(w.receipt_expected) + toNumber(w.obligations) > 0);
