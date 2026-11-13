@@ -8,8 +8,8 @@
   --color-ink-900: #13243a;
   --color-brand-600: #1f5c57;
   --color-brand-700: #184a46;
-  --color-paper: #f4f3ef;
-  --color-line: #e2dfd6;
+  --color-paper: #FFFFFF;
+  --color-line: #E3E9F0;
 }
 
 :root {
@@ -19,8 +19,8 @@
   --teal-hover: #184a46;
   --teal-bright: #17b5a3;
   --teal-soft: #e5f2ee;
-  --bg: #f4f3ef;
-  --border: #e2dfd6;
+  --bg: #FFFFFF;
+  --border: #E3E9F0;
   --input-border: #d2d5d0;
   --text: #13243a;
   --muted: #647488;
