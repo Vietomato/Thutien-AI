@@ -9,6 +9,10 @@ import { Landing } from "@/Landing";
 import { Logo } from "@/Logo";
 
 type Page = "overview" | "invoices" | "forecast" | "drafts" | "tasks" | "payments" | "users" | "audit";
+
+// Browser tab titles: "<page> | CashPilot" inside the app, the product line before sign-in.
+const SITE_TITLE = "CashPilot | Dự báo dòng tiền & công nợ";
+const PAGE_TITLE: Record<Page, string> = { overview: "Tổng quan", invoices: "Công nợ", forecast: "Dự báo dòng tiền", drafts: "Nhắc nợ", tasks: "Nhiệm vụ", payments: "Thanh toán", users: "Người dùng", audit: "Nhật ký" };
 type Profile = Row & { username: string; full_name: string; role: string; permissions: string[] };
 
 function initialPage(profile: Profile): Page {
@@ -120,6 +124,7 @@ export default function App() {
   const perms = useMemo(() => new Set(me?.permissions ?? []), [me]);
   const can = (permission: string) => perms.has(permission);
   const navigate = (to: string) => { window.location.hash = to; setPage(to as Page); setDataError(""); };
+  useEffect(() => { document.title = me ? `${PAGE_TITLE[page]} | CashPilot` : SITE_TITLE; }, [me, page]);
   const refresh = () => { if (me) void load(me); };
 
   const act: Action = async (job, message) => {
