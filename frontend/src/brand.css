@@ -4,10 +4,10 @@
    fully rounded buttons, generous radii, flat surfaces. */
 
 :root {
-  --display: "Bricolage Grotesque", "Be Vietnam Pro", system-ui, sans-serif;
-  --serif: "Source Serif 4", "Be Vietnam Pro", Georgia, serif;
+  --display: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --lime: #8ED1FF; --lime-2: #6BC2FA; --forest: #062B4A; --forest-2: #0B3F6B;
-  --mint: #DDF0FF; --butter: #FFF0B3; --peach: #FFD9C7; --cream: #F6F8FB; --paper: #FFFFFF;
+  --mint: #DDF0FF; --butter: #E4EBFF; --peach: #FFD9C7; --cream: #F6F8FB; --paper: #FFFFFF;
 }
 
 h1, h2, h3, .page-title, .logo-word { font-family: var(--display); }
@@ -105,15 +105,15 @@ body { background: var(--paper); }
 /* ---------- overview headline band: forest with radar rings ---------- */
 .hero { margin-top: calc(var(--pad-y) * -1 + 6px); border-radius: 0 0 56px 56px; background-color: var(--forest);
   background-image: repeating-radial-gradient(circle at 92% 130%, transparent 0 70px, rgba(142, 209, 255, .13) 70px 71px); }
-.hero-eyebrow { color: var(--lime); font-family: var(--mono); font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; }
-.hero-title { font-family: var(--display); font-weight: 800; letter-spacing: -.045em; }
-.hero-title em { font-family: var(--serif); font-style: italic; font-weight: 500; color: var(--lime); letter-spacing: -.02em; }
+.hero-eyebrow { color: var(--lime); font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; }
+.hero-title { font-family: var(--display); font-weight: 800; letter-spacing: -.032em; }
+.hero-title em { font-family: var(--display); font-style: normal; font-weight: 800; color: var(--lime); letter-spacing: -.02em; }
 .hero-sub { color: #C9DEF0; }
 .hero-in { padding-bottom: 64px; }
 
 /* ---------- sign in ---------- */
 .auth-band { background-color: var(--forest); background-image: repeating-radial-gradient(circle at 90% 130%, transparent 0 70px, rgba(142, 209, 255, .13) 70px 71px); }
-.auth-band h1 { font-family: var(--display); font-weight: 800; letter-spacing: -.045em; }
+.auth-band h1 { font-family: var(--display); font-weight: 800; letter-spacing: -.032em; }
 .auth-band .lead { color: #C9DEF0; }
 .art-in { fill: var(--lime); }
 .art-out { fill: #F6F8FB; }
@@ -135,7 +135,7 @@ body { background: var(--paper); }
 .ptl-today em { top: 14px; color: var(--muted); font-weight: 500; }
 .ptl-today i { background: #fff; box-shadow: 0 0 0 1.5px var(--muted); }
 .ptl-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.ptl-legend li { display: flex; flex-direction: column; min-width: 120px; padding: 10px 14px; border-radius: 14px; background: #F3F6FA; font-family: var(--mono); font-size: 15px; font-weight: 500; }
+.ptl-legend li { display: flex; flex-direction: column; min-width: 120px; padding: 10px 14px; border-radius: 14px; background: #F3F6FA; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 500; }
 .ptl-legend li b { margin-bottom: 2px; font-family: var(--font); font-size: 12px; font-weight: 600; color: var(--muted); }
 .ptl-legend .ptl-hi { background: #DDF0FF; }
 .ptl-legend .ptl-hi b { color: #08457F; }
@@ -156,6 +156,6 @@ body { background: var(--paper); }
 .f4-contrib li:first-child { border-top: 0; }
 .f4-contrib li strong { display: block; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .f4-contrib li small { display: block; font-size: 12.5px; color: var(--muted); }
-.f4-contrib li b { font-family: var(--mono); font-size: 13.5px; font-weight: 500; white-space: nowrap; }
-.f4-prob { padding: 2px 8px; border-radius: 999px; background: #DDF0FF; color: #08457F; font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: center; }
+.f4-contrib li b { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+.f4-prob { padding: 2px 8px; border-radius: 999px; background: #DDF0FF; color: #08457F; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; text-align: center; }
 .f4-more { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
