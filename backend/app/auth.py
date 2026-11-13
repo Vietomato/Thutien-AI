@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from . import users
 from .audit import append_audit
+from .config import DEFAULT_JWT_SECRET, registration_open
 from .permissions import CUSTOMER, has_permission, permissions_of
 from .security import DUMMY_HASH, MIN_PASSWORD_LENGTH, verify_password
 
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _secret() -> str:
-    return os.getenv("JWT_SECRET", "dev-only-secret-change-me-at-least-32-bytes")
+    return os.getenv("JWT_SECRET", DEFAULT_JWT_SECRET)
 
 
 # ---------- dependencies ----------
@@ -113,6 +114,8 @@ def login(body: LoginRequest):
 def register(body: RegisterRequest):
     """Self-registration. The account is a 'customer' not yet linked to any Odoo customer, so it sees no
     data until an admin links it or changes the role."""
+    if not registration_open():
+        raise HTTPException(403, "self-registration is closed; ask an administrator for an account")
     username = users.normalize_username(body.username)
     if not users.valid_username(username):
         raise HTTPException(422, "username must be 3-32 characters: a-z, 0-9, dot, dash, underscore")

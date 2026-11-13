@@ -2,6 +2,8 @@
 Odoo's database is separate and read-only (see odoo_reader.py).
 Supports both psycopg and pure-Python pg8000 (bypasses Windows DLL block)."""
 import os
+import threading
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -83,8 +85,108 @@ class _Pg8000ConnectionWrapper:
         self._conn.close()
 
 
+# Opening a PostgreSQL connection costs about 60 ms and a page load opens dozens, so connections are kept and reused (psycopg
+# only). A connection goes back to the pool when its `with` block ends, after a commit or rollback, so no transaction or lock
+# is carried over. Idle connections are checked before reuse. APP_DB_POOL_SIZE (default 10, 0 = off) is the most idle ones kept.
+_IDLE: dict[tuple, list[tuple[object, float]]] = {}
+_IDLE_LOCK = threading.Lock()
+_RECHECK_AFTER = 30.0
+
+
+def _pool_size() -> int:
+    try:
+        return max(int(os.getenv("APP_DB_POOL_SIZE", "10")), 0)
+    except ValueError:
+        return 10
+
+
+def _discard(conn) -> None:
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
+class _PooledConnection:
+    """A psycopg connection that goes back to the pool at the end of `with` instead of being closed."""
+
+    def __init__(self, conn, key: tuple):
+        self._conn, self._key, self._released = conn, key, False
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        healthy = True
+        try:
+            if exc_type is None:
+                self._conn.commit()
+            else:
+                self._conn.rollback()
+            healthy = not self._conn.closed and self._conn.info.transaction_status == psycopg.pq.TransactionStatus.IDLE
+        except Exception:
+            healthy = False
+            if exc_type is None:
+                self._release(False)
+                raise
+        self._release(healthy)
+        return False
+
+    def close(self) -> None:
+        self._release(False)
+
+    def _release(self, healthy: bool) -> None:
+        if self._released:
+            return
+        self._released = True
+        if healthy:
+            with _IDLE_LOCK:
+                idle = _IDLE.setdefault(self._key, [])
+                if len(idle) < _pool_size():
+                    idle.append((self._conn, time.monotonic()))
+                    return
+        _discard(self._conn)
+
+
+def _checkout(key: tuple, factory):
+    if _pool_size() <= 0:
+        return factory()
+    while True:
+        with _IDLE_LOCK:
+            idle = _IDLE.get(key)
+            entry = idle.pop() if idle else None
+        if entry is None:
+            return _PooledConnection(factory(), key)
+        conn, since = entry
+        try:
+            if conn.closed:
+                continue
+            if time.monotonic() - since > _RECHECK_AFTER:      # idle for a while: make sure the server did not drop it
+                conn.execute("SELECT 1")
+                conn.rollback()
+            return _PooledConnection(conn, key)
+        except Exception:
+            _discard(conn)
+
+
+def pool_stats() -> dict:
+    with _IDLE_LOCK:
+        return {"idle": sum(len(v) for v in _IDLE.values()), "size": _pool_size()}
+
+
+def close_pool() -> None:
+    with _IDLE_LOCK:
+        entries = [c for v in _IDLE.values() for c, _ in v]
+        _IDLE.clear()
+    for conn in entries:
+        _discard(conn)
+
+
 def connect():
-    """Open a connection. Use as `with connect() as conn:` (commits on success, rolls back on error, closes)."""
+    """Open a connection. Use as `with connect() as conn:` (commits on success, rolls back on error, then reuses or closes)."""
     db_url = os.getenv("APP_DB_URL") or os.getenv("DATABASE_URL")
     password = os.getenv("APP_DB_PASSWORD")
 
@@ -92,17 +194,14 @@ def connect():
     if psycopg is not None:
         try:
             if db_url:
-                return psycopg.connect(db_url, connect_timeout=10, row_factory=dict_row)
+                return _checkout(("url", db_url),
+                                 lambda: psycopg.connect(db_url, connect_timeout=10, row_factory=dict_row))
             if password:
-                return psycopg.connect(
-                    host=os.getenv("APP_DB_HOST", "localhost"),
-                    port=int(os.getenv("APP_DB_PORT", "5433")),
-                    dbname=os.getenv("APP_DB_NAME", "thutien_app"),
-                    user=os.getenv("APP_DB_USER", "thutien_app"),
-                    password=password,
-                    connect_timeout=5,
-                    row_factory=dict_row,
-                )
+                host, port = os.getenv("APP_DB_HOST", "localhost"), int(os.getenv("APP_DB_PORT", "5433"))
+                dbname, user = os.getenv("APP_DB_NAME", "thutien_app"), os.getenv("APP_DB_USER", "thutien_app")
+                return _checkout(("params", host, port, dbname, user, password),
+                                 lambda: psycopg.connect(host=host, port=port, dbname=dbname, user=user, password=password,
+                                                         connect_timeout=5, row_factory=dict_row))
         except Exception:
             pass  # Fall through to pg8000
 

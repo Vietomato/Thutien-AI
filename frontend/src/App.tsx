@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, jsonBody, tokenStore } from "@/lib/api";
 import { ForecastPage, Invoices, Overview } from "@/FinancePages";
 import { AdminUsers, Audit, Customers, Reminders, Tasks } from "@/Operations";
 import { Action, errorMessage, roleName, Row } from "@/ui";
-import { ChatPanel } from "@/ChatPanel";
+import { ErrorBoundary } from "@/ErrorBoundary";
+import { formatUpdated } from "@/lib/updatedAt";
 import { Icon } from "@/icons";
 import { Landing } from "@/Landing";
 import { Logo } from "@/Logo";
+
+// The chat panel is only needed by accountants and is loaded when it is first drawn.
+const ChatPanel = lazy(() => import("@/ChatPanel").then(m => ({ default: m.ChatPanel })));
 
 type Page = "overview" | "invoices" | "forecast" | "drafts" | "tasks" | "payments" | "users" | "audit";
 
@@ -91,13 +95,23 @@ export default function App() {
     if (p.has("task:read_team")) jobs.team = api("/api/team");
     if (p.has("user:manage")) { jobs.users = api("/api/admin/users"); jobs.customers = api("/api/admin/customers"); }
     if (p.has("audit:read")) jobs.audit = api("/api/admin/audit?limit=100");
+    let buffer: Row = {};
+    let flushTimer: number | undefined;
+    const flush = () => {
+      flushTimer = undefined;
+      const chunk = buffer;
+      buffer = {};
+      if (current === requestId.current) setData(previous => ({ ...previous, ...chunk }));
+    };
     const results = await Promise.all(Object.entries(jobs).map(async ([name, task]) => {
       const result = await task.then(value => ({ value }), error => ({ error }));
       if (current === requestId.current && "value" in result) {
-        setData(previous => ({ ...previous, [name]: result.value }));
+        buffer[name] = result.value;
+        if (flushTimer === undefined) flushTimer = window.setTimeout(flush, 60);
       }
       return { name, result };
     }));
+    if (flushTimer !== undefined) { window.clearTimeout(flushTimer); flush(); }
     if (current !== requestId.current) return;
     const next: Row = {};
     const failed: string[] = [];
@@ -123,9 +137,10 @@ export default function App() {
 
   const perms = useMemo(() => new Set(me?.permissions ?? []), [me]);
   const can = (permission: string) => perms.has(permission);
+  const updatedAt = formatUpdated((data.forecast ?? data.summary ?? data.invoices)?.data_updated_at);
   const navigate = (to: string) => { window.location.hash = to; setPage(to as Page); setDataError(""); };
   useEffect(() => { document.title = me ? `${PAGE_TITLE[page]} | CashPilot` : SITE_TITLE; }, [me, page]);
-  const refresh = () => { if (me) void load(me); };
+  const refresh = async () => { if (!me) return; try { await api("/api/data/refresh", { method: "POST" }); } catch { /* reload anyway */ } void load(me); };
 
   const act: Action = async (job, message) => {
     if (!me || actionInFlight.current) return false;
@@ -212,14 +227,15 @@ export default function App() {
       <nav className="topnav-links" aria-label="Điều hướng chính">{nav.filter(x => x.visible).map(x => <button className="topnav-link" key={x.id} aria-current={page === x.id ? "page" : undefined} onClick={() => navigate(x.id)}>{x.label}</button>)}</nav>
       <div className="topnav-end">
         {busy && <span className="sync"><span className="spinner" aria-hidden="true" />Đang đồng bộ…</span>}
+        {updatedAt && <span className="updated" title="Thời điểm hệ thống đọc dữ liệu từ Odoo">Cập nhật {updatedAt}</span>}
         <button className="icon-btn" onClick={refresh} disabled={busy} title="Đọc lại dữ liệu từ Odoo" aria-label="Tải lại dữ liệu"><Icon name="refresh" size={18} /></button>
         <div className="acct"><button className="acct-trigger" aria-expanded={accountOpen} aria-haspopup="menu" onClick={() => setAccountOpen(v => !v)}><span className="avatar">{me.full_name.slice(0, 1).toUpperCase()}</span><span className="acct-text"><span className="acct-text-name">{me.full_name}</span><span className="acct-text-role">{roleName(me.role)}</span></span><Icon name="chevron" size={16} /></button>
           {accountOpen && <div className="acct-menu" role="menu"><div className="acct-head"><span className="acct-name">{me.full_name}</span><span className="acct-sub">@{me.username} · {roleName(me.role)}</span></div><div className="acct-items"><button className="acct-item" role="menuitem" onClick={() => { setPasswordOpen(true); setAccountOpen(false); }}><span className="acct-item-label"><Icon name="key" size={16} />Đổi mật khẩu</span></button><button className="acct-item acct-logout" role="menuitem" onClick={logout}><span className="acct-item-label"><Icon name="logout" size={16} />Đăng xuất / đổi vai trò</span></button></div></div>}</div>
       </div>
     </div></header>
-    <main className="content">{dataError && <div className="alert alert-danger inline-alert" role="alert"><span>{dataError}</span><button aria-label="Đóng thông báo" onClick={() => setDataError("")}>×</button></div>}{page === "overview" && <Overview data={data} onNavigate={navigate} />}{page === "invoices" && <Invoices data={data} isStaff={can("invoice:read_all")} canDraft={can("draft:create")} canAssign={can("task:assign")} onDrafts={() => navigate("drafts")} onTasks={() => navigate("tasks")} act={act} />}{page === "forecast" && <ForecastPage forecast={data.forecast} obligations={data.obligations} canEdit={can("obligation:write")} act={act} />}{page === "drafts" && <Reminders data={data} viewerId={me.id} canCreate={can("draft:create")} canDecide={can("draft:decide")} act={act} />}{page === "tasks" && <Tasks data={data} canAssign={can("task:assign")} act={act} />}{page === "payments" && <Customers data={data} />}{page === "users" && <AdminUsers data={data} act={act} />}{page === "audit" && <Audit data={data} />}<footer className="page-foot">Dữ liệu đồng bộ từ Odoo, chỉ đọc. Hệ thống không ghi ngược vào Odoo.</footer></main>
+    <main className="content">{dataError && <div className="alert alert-danger inline-alert" role="alert"><span>{dataError}</span><button aria-label="Đóng thông báo" onClick={() => setDataError("")}>×</button></div>}<ErrorBoundary key={page}>{page === "overview" && <Overview data={data} onNavigate={navigate} />}{page === "invoices" && <Invoices data={data} isStaff={can("invoice:read_all")} canDraft={can("draft:create")} canAssign={can("task:assign")} onDrafts={() => navigate("drafts")} onTasks={() => navigate("tasks")} act={act} />}{page === "forecast" && <ForecastPage forecast={data.forecast} obligations={data.obligations} canEdit={can("obligation:write")} act={act} />}{page === "drafts" && <Reminders data={data} viewerId={me.id} canCreate={can("draft:create")} canDecide={can("draft:decide")} act={act} />}{page === "tasks" && <Tasks data={data} canAssign={can("task:assign")} act={act} />}{page === "payments" && <Customers data={data} />}{page === "users" && <AdminUsers data={data} act={act} />}{page === "audit" && <Audit data={data} />}</ErrorBoundary><footer className="page-foot">Dữ liệu đồng bộ từ Odoo, chỉ đọc. Hệ thống không ghi ngược vào Odoo.</footer></main>
     {passwordOpen && <div className="modal-backdrop"><form className="auth-card modal-card" onSubmit={changePassword}><h2>Đổi mật khẩu</h2><div className="field"><label htmlFor="pw-old">Mật khẩu hiện tại</label><input id="pw-old" className="input" type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} required /></div><div className="field"><label htmlFor="pw-new">Mật khẩu mới</label><input id="pw-new" className="input" type="password" minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} required /></div><div className="form-actions"><button className="btn" disabled={busy}>Lưu mật khẩu</button><button className="btn btn-secondary" type="button" onClick={() => setPasswordOpen(false)}>Hủy</button></div></form></div>}
-    {can("forecast:read") && <ChatPanel />}
+    {can("forecast:read") && <Suspense fallback={null}><ChatPanel /></Suspense>}
     {toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}
   </div>;
 }
