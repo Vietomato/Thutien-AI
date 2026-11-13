@@ -25,6 +25,12 @@ _PAGE_SIZE = 2000
 _MAX_RECORDS = 20_000
 _CACHE: dict[str, tuple[float, object]] = {}
 _CACHE_LOCK = threading.RLock()
+_KEY_LOCKS: dict[str, threading.Lock] = {}
+
+
+def clear_cache() -> None:
+    with _CACHE_LOCK:
+        _CACHE.clear()
 
 
 def _settings() -> tuple[str, str, str]:
@@ -154,8 +160,17 @@ def _cached(name: str, loader, ttl: int = 5):
         hit = _CACHE.get(cache_key)
         if hit and hit[0] > time.monotonic():
             return hit[1]
+        key_lock = _KEY_LOCKS.setdefault(cache_key, threading.Lock())
+    # The (slow) network read holds only this list's lock, so open invoices, payments, bills and customers load in parallel
+    # while two requests for the same list still share one read.
+    with key_lock:
+        with _CACHE_LOCK:
+            hit = _CACHE.get(cache_key)
+            if hit and hit[0] > time.monotonic():
+                return hit[1]
         value = loader()
-        _CACHE[cache_key] = (time.monotonic() + ttl, value)
+        with _CACHE_LOCK:
+            _CACHE[cache_key] = (time.monotonic() + ttl, value)
         return value
 
 

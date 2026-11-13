@@ -5,15 +5,24 @@ from datetime import date
 from fastapi import APIRouter, Depends
 
 from . import analytics, obligations, odoo_reader
-from .auth import require_any_permission, require_permission
+from .auth import current_user, require_any_permission, require_permission
 from .config import as_of_date, data_source
 from .permissions import has_permission
 
 router = APIRouter(prefix="/api", tags=["data"])
 
 
+@router.post("/data/refresh")
+def refresh_data(user: dict = Depends(current_user)):
+    """The "reload" button: drop what was read from Odoo and read the main lists again, in parallel, so the page that is loaded
+    right after this call finds everything ready."""
+    odoo_reader.clear_cache()
+    odoo_reader.warm_cache()
+    return {"ok": True}
+
+
 def envelope(**extra) -> dict:
-    return {"source": data_source(), "as_of_date": as_of_date().isoformat(), **extra}
+    return {"source": data_source(), "as_of_date": as_of_date().isoformat(), "data_updated_at": odoo_reader.data_updated_at(), **extra}
 
 
 def customer_scope(user: dict, all_perm: str) -> tuple[bool, str | None]:

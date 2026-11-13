@@ -10,6 +10,7 @@ from datetime import date
 import pytest
 
 os.environ["APP_DB_NAME"] = "thutien_test"  # must be set before any app code connects
+os.environ["ODOO_CACHE_SECONDS"] = "0"  # tests must see every change at once; test_odoo_cache.py turns it on itself
 
 from fastapi.testclient import TestClient  # noqa: E402
 
