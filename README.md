@@ -217,11 +217,49 @@ with its meaning; the groups are:
 | Odoo Online | `ODOO_ONLINE_URL`, `ODOO_ONLINE_API_KEY`, `ODOO_ONLINE_DB`, `ODOO_ONLINE_DISPUTE_FIELD` | Odoo 19+ JSON-2, Custom plan |
 | Application DB | `APP_DB_HOST/PORT/NAME/USER/PASSWORD` or `APP_DB_URL` | Created by `scripts/init_app_db.sql` |
 | Login | `JWT_SECRET`, `DEMO_PASSWORD` | `JWT_SECRET` is backend-only; long and random |
+| Speed | `ODOO_CACHE_SECONDS`, `APP_DB_POOL_SIZE` | See [Speed](#speed) |
+| Deployment | `APP_ENV`, `ALLOW_REGISTRATION` | `APP_ENV=production` refuses unsafe settings; see [Deploying](#deploying) |
 | Chat assistant | `CHAT_PROVIDER`, `GROQ_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `CHAT_MODEL`, `CHAT_TIMEOUT_SECONDS` | See [Chat assistant](#chat-assistant) |
 | Local LLM | `OLLAMA_ENABLED`, `OLLAMA_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_SECONDS` | Reminder wording, and the chat when `CHAT_PROVIDER=ollama` |
 
 Put comments on their own line in `.env` (not after a value) and do not quote values. Never put a key in the frontend,
 in `.env.example`, in a commit or in a chat message.
+
+## Speed
+
+Reading Odoo Online takes 0.5 to 2 seconds a call, and one page load needs the same lists several times. So:
+
+- **Memory cache with background refresh** (`odoo_reader.py`). Invoice and bill lists are fresh for `ODOO_CACHE_SECONDS`
+  (default 120 s); payment history and customers change slowly and are kept 5 times longer. Once a list is older, the old data
+  is still returned at once while one background thread reads Odoo again, so nobody waits for Odoo. A failed refresh keeps the
+  old data and retries after 15 s. At start-up the main lists are read in parallel (warm-up).
+- **A single invoice is never cached**: approving a reminder checks the debt as it is now.
+- **Reload button** (`POST /api/data/refresh`) clears the cache and reads the lists again in parallel. Every data answer carries
+  `data_updated_at`, shown in the app as "Cập nhật 14:32".
+- **Connection pool** for the application database (`APP_DB_POOL_SIZE`): opening a PostgreSQL connection costs about 60 ms, reusing
+  one 0.5 ms. A connection returns to the pool only after a commit or rollback.
+- **Network:** responses over 1 KB are gzip-compressed; files under `assets/` carry a content hash and are cached for a year,
+  `index.html` is always revalidated. The Inter font ships with the app (no request to Google).
+
+Measured against a real Odoo Online (9 data requests in parallel, as the browser does): about 2.7 s per page before, about 0.1 s
+with a warm cache, 2 to 4 s only right after pressing reload. Local-database mode is fast and is not cached.
+
+## Deploying
+
+The backend serves the built frontend, so one process plus a PostgreSQL database is enough. Use Odoo Online (or any Odoo with the
+JSON-2 API) as the source: reading the database directly is only for development, and a hosted Odoo does not offer it.
+
+1. `cd frontend && npm ci && npm run build`
+2. Set the environment on the server (not a `.env` file in the image): `APP_ENV=production`, `ODOO_SOURCE=online`,
+   `ODOO_ONLINE_URL`, `ODOO_ONLINE_API_KEY`, `APP_DB_URL` (or `APP_DB_*`), a long random `JWT_SECRET`, `ALLOW_REGISTRATION=0`
+   if the site is public, and the chat provider and key.
+3. `uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT` from the repository root, behind HTTPS.
+
+With `APP_ENV=production` the server **refuses to start** if `JWT_SECRET` is missing, is the public development default or is
+shorter than 32 characters, or if `APP_DB_PASSWORD` is empty or `change-me`. Every response carries `X-Content-Type-Options`,
+`X-Frame-Options: DENY`, `Referrer-Policy` and `Permissions-Policy`; the app pages also carry a strict Content-Security-Policy
+(scripts, fonts and requests only from the same origin). The cache lives in the process, so run **one** process (or put a shared
+cache in front) if you rely on the reload button.
 
 ## Data sources
 
@@ -520,5 +558,7 @@ research/               experiments (not part of the product)
 | `.env` change has no effect | The backend reads `.env` at start-up only; a variable set in the terminal overrides it |
 | API returns 502 on every data page | Odoo is unreachable or the read-only role/API key is wrong |
 | API returns 503 | The application database is unreachable; check `APP_DB_*` and `/health` |
+| Data looks a few minutes old | The Odoo lists are cached (`ODOO_CACHE_SECONDS`); press the reload button, or set it to 0 for a demo where you edit Odoo live |
+| The server stops at start-up with "unsafe production settings" | `APP_ENV=production` and a default or short `JWT_SECRET`, or a placeholder `APP_DB_PASSWORD`; set real values |
 | Everything looks empty for a customer account | The account is not linked to an Odoo customer id; an admin links it |
 
