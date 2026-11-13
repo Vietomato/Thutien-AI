@@ -88,3 +88,7 @@ CREATE TABLE IF NOT EXISTS obligations (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS obligations_due_idx ON obligations (due_date);
+-- Optional: the late-payment fee (percent of the amount per month) if the accountant knows it. Used only to compare what
+-- deferring an expense would cost; it is never guessed.
+ALTER TABLE obligations ADD COLUMN IF NOT EXISTS late_fee_percent_per_month NUMERIC(5,2)
+    CHECK (late_fee_percent_per_month IS NULL OR (late_fee_percent_per_month >= 0 AND late_fee_percent_per_month <= 100));

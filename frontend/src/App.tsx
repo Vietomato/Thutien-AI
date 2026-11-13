@@ -3,6 +3,7 @@ import { api, ApiError, jsonBody, tokenStore } from "@/lib/api";
 import { ForecastPage, Invoices, Overview } from "@/FinancePages";
 import { AdminUsers, Audit, Customers, Reminders, Tasks } from "@/Operations";
 import { Action, errorMessage, roleName, Row } from "@/ui";
+import { ChatPanel } from "@/ChatPanel";
 import { Icon } from "@/icons";
 import { Landing } from "@/Landing";
 import { Logo } from "@/Logo";
@@ -213,6 +214,7 @@ export default function App() {
     </div></header>
     <main className="content">{dataError && <div className="alert alert-danger inline-alert" role="alert"><span>{dataError}</span><button aria-label="Đóng thông báo" onClick={() => setDataError("")}>×</button></div>}{page === "overview" && <Overview data={data} onNavigate={navigate} />}{page === "invoices" && <Invoices data={data} isStaff={can("invoice:read_all")} canDraft={can("draft:create")} canAssign={can("task:assign")} onDrafts={() => navigate("drafts")} onTasks={() => navigate("tasks")} act={act} />}{page === "forecast" && <ForecastPage forecast={data.forecast} obligations={data.obligations} canEdit={can("obligation:write")} act={act} />}{page === "drafts" && <Reminders data={data} viewerId={me.id} canCreate={can("draft:create")} canDecide={can("draft:decide")} act={act} />}{page === "tasks" && <Tasks data={data} canAssign={can("task:assign")} act={act} />}{page === "payments" && <Customers data={data} />}{page === "users" && <AdminUsers data={data} act={act} />}{page === "audit" && <Audit data={data} />}<footer className="page-foot">Dữ liệu đồng bộ từ Odoo, chỉ đọc. Hệ thống không ghi ngược vào Odoo.</footer></main>
     {passwordOpen && <div className="modal-backdrop"><form className="auth-card modal-card" onSubmit={changePassword}><h2>Đổi mật khẩu</h2><div className="field"><label htmlFor="pw-old">Mật khẩu hiện tại</label><input id="pw-old" className="input" type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} required /></div><div className="field"><label htmlFor="pw-new">Mật khẩu mới</label><input id="pw-new" className="input" type="password" minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} required /></div><div className="form-actions"><button className="btn" disabled={busy}>Lưu mật khẩu</button><button className="btn btn-secondary" type="button" onClick={() => setPasswordOpen(false)}>Hủy</button></div></form></div>}
+    {can("forecast:read") && <ChatPanel />}
     {toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}
   </div>;
 }

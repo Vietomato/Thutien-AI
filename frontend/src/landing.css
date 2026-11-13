@@ -1,6 +1,6 @@
 /* Public home page, scoped under .lp. Brand: ink, paper and lime (see brand.css for the shared tokens).
    Big characterful headlines, pastel colour blocks with generous radii, a running ribbon, a forest-green flight-plan card. */
-.lp { --lime: #8ED1FF; --lime-2: #6BC2FA; --forest: #062B4A; --ink: #0E0F0C; --paper: #F4F3EC; --mint: #DDF0FF; --butter: #FFF0B3; --peach: #FFD9C7;
+.lp { --lime: #8ED1FF; --lime-2: #6BC2FA; --forest: #062B4A; --ink: #0E0F0C; --paper: #FFFFFF; --mint: #DDF0FF; --butter: #FFF0B3; --peach: #FFD9C7;
   background: var(--paper); color: var(--ink); overflow-x: clip; }
 .lp-wrap { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
 .lp h1, .lp h2, .lp h3 { font-family: var(--display); }

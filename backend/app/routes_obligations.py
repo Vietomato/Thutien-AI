@@ -18,6 +18,7 @@ class ObligationIn(BaseModel):
     amount: int = Field(gt=0)
     currency: Literal["VND"] = "VND"
     due_date: date
+    late_fee_percent_per_month: float | None = Field(default=None, ge=0, le=100)   # optional: only if the accountant knows it
 
 
 @router.get("/obligations", dependencies=[Depends(require_permission("forecast:read"))])
@@ -27,7 +28,7 @@ def list_obligations():
 
 @router.post("/obligations", status_code=201)
 def add_obligation(body: ObligationIn, user: dict = Depends(require_permission("obligation:write"))):
-    record = obligations.create(body.description, body.amount, body.due_date, user["id"])
+    record = obligations.create(body.description, body.amount, body.due_date, user["id"], body.late_fee_percent_per_month)
     append_audit(user["username"], "obligation_created", f"obligation:{record['id']}",
                  {"amount": record["amount"], "due_date": record["due_date"]})
     return record

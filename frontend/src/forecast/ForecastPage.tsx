@@ -9,6 +9,7 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [fee, setFee] = useState("");
   const weeks: WeekRow[] = useMemo(() => (forecast?.weeks ?? []) as WeekRow[], [forecast]);
   const alerts: Row[] = forecast?.alerts ?? [];
   const items: Row[] = obligations?.items ?? [];
@@ -21,12 +22,14 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
   const hasBeyond = toNumber(beyond.p25) + toNumber(beyond.p50) + toNumber(beyond.p75) > 0 || toNumber(forecast?.obligations_out_of_horizon) > 0;
   const maxGap = Math.max(1, ...alerts.map(a => toNumber(a.gap_p75)));
   const amountValue = Number(amount);
-  const valid = description.trim().length > 0 && Number.isInteger(amountValue) && amountValue > 0 && dueDate !== "";
+  const feeValue = fee.trim() === "" ? null : Number(fee);
+  const feeOk = feeValue === null || (Number.isFinite(feeValue) && feeValue >= 0 && feeValue <= 100);
+  const valid = description.trim().length > 0 && Number.isInteger(amountValue) && amountValue > 0 && dueDate !== "" && feeOk;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid) return;
-    const ok = await act(() => api("/api/obligations", jsonBody({ description: description.trim(), amount: amountValue, due_date: dueDate })), "Đã lưu khoản chi dự kiến.");
-    if (ok) { setDescription(""); setAmount(""); setDueDate(""); }
+    const ok = await act(() => api("/api/obligations", jsonBody({ description: description.trim(), amount: amountValue, due_date: dueDate, late_fee_percent_per_month: feeValue })), "Đã lưu khoản chi dự kiến.");
+    if (ok) { setDescription(""); setAmount(""); setDueDate(""); setFee(""); }
   };
 
   return <>
@@ -78,14 +81,15 @@ export function ForecastPage({ forecast, obligations, canEdit, act }: { forecast
         <div className="field"><label htmlFor="ob-description">Nội dung</label><input id="ob-description" className="input" value={description} onChange={e => setDescription(e.target.value)} maxLength={200} placeholder="Ví dụ: Tiền thuê văn phòng" required /></div>
         <div className="field"><label htmlFor="ob-amount">Số tiền (VND)</label><input id="ob-amount" className="input" type="number" min={1} step={1} inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)} placeholder="30000000" required /></div>
         <div className="field"><label htmlFor="ob-date">Ngày chi</label><input id="ob-date" className="input" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required /></div>
+        <div className="field"><label htmlFor="ob-fee">Phí phạt trễ (%/tháng, nếu biết)</label><input id="ob-fee" className="input" type="number" min={0} max={100} step="0.1" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} placeholder="Ví dụ: 2" /></div>
       </div>
       <div><button className="btn" style={{ padding: "0 18px" }} disabled={!valid}>Thêm khoản chi</button></div></form>}
 
     <section className="panel">
       <div className="panel-head"><h2>Khoản chi kế toán đã nhập</h2><span className="note">Nhập tay, chưa đọc từ Odoo</span></div>
       {items.length === 0 ? <div className="empty">Chưa có khoản chi nhập tay nào.</div>
-        : <div className="table-scroll"><table className="table"><thead><tr><th>Ngày chi</th><th>Nội dung</th><th className="num">Số tiền</th><th>Người nhập</th></tr></thead>
-          <tbody>{items.map(o => <tr key={o.id}><td>{date(o.due_date)}</td><td>{o.description}</td><td className="num">{money(o.amount)}</td><td>{o.created_by_username}</td></tr>)}</tbody></table></div>}
+        : <div className="table-scroll"><table className="table"><thead><tr><th>Ngày chi</th><th>Nội dung</th><th className="num">Số tiền</th><th className="num">Phạt trễ/tháng</th><th>Người nhập</th></tr></thead>
+          <tbody>{items.map(o => <tr key={o.id}><td>{date(o.due_date)}</td><td>{o.description}</td><td className="num">{money(o.amount)}</td><td className="num">{o.late_fee_percent_per_month == null ? "chưa biết" : `${o.late_fee_percent_per_month}%`}</td><td>{o.created_by_username}</td></tr>)}</tbody></table></div>}
     </section>
 
     <section className="panel">

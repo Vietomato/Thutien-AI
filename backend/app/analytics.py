@@ -118,12 +118,14 @@ def forecast(invoices: list[Invoice], predictions: list[Prediction], bills: list
 
 
 def _week_probabilities(inv: Invoice, by_customer: dict[str, list[int]], everyone: Counter, total_all: int,
-                        as_of: date, weeks: int, shrink_k: float) -> list[float]:
-    """P(this invoice is paid in each of the next `weeks` weeks). Probability beyond the last week is not listed."""
+                        as_of: date, weeks: int, shrink_k: float, shift: int = 0) -> list[float]:
+    """P(this invoice is paid in each of the next `weeks` weeks). Probability beyond the last week is not listed.
+    `shift` moves every payment date by that many days (a what-if: this customer pays later, or earlier, than predicted);
+    a payment cannot move before today."""
     probs = [0.0] * weeks
     due_offset = (inv.due_date - as_of).days
     if total_all < MIN_HISTORY:                           # nothing to learn from: paid on the due date (or today if overdue)
-        week = max(due_offset, 0) // 7
+        week = max(max(due_offset, 0) + shift, 0) // 7
         if week < weeks:
             probs[week] = 1.0
         return probs
@@ -143,24 +145,26 @@ def _week_probabilities(inv: Invoice, by_customer: dict[str, list[int]], everyon
     else:                                                 # later than anything on record: count the typical delay from today
         slots = ((max(1, d), w) for d, w in mix.items())
     for offset, w in slots:
-        week = offset // 7
+        week = max(offset + shift, 0) // 7
         if 0 <= week < weeks:
             probs[week] += w
     return probs
 
 
 def expected_receipts(invoices: list[Invoice], delays: list[tuple[str, int]], as_of: date, weeks: int = WEEKS,
-                      shrink_k: float = SHRINK_K) -> list[int]:
+                      shrink_k: float = SHRINK_K, shifts: dict[str, int] | None = None) -> list[int]:
     """Expected money arriving in each of the next `weeks` weeks: sum over open invoices of amount x P(paid that week).
-    Disputed invoices are left out, as in predict()."""
+    Disputed invoices are left out, as in predict(). `shifts` maps a customer id to extra days of delay (what-if)."""
     by_customer = group_delays(delays)
     everyone = Counter(d for _, d in delays)
     total_all = sum(everyone.values())
+    shifts = shifts or {}
     received = [0.0] * weeks
     for inv in invoices:
         if inv.dispute_status == "disputed":
             continue
-        for w, p in enumerate(_week_probabilities(inv, by_customer, everyone, total_all, as_of, weeks, shrink_k)):
+        probs = _week_probabilities(inv, by_customer, everyone, total_all, as_of, weeks, shrink_k, shifts.get(inv.customer_id, 0))
+        for w, p in enumerate(probs):
             received[w] += inv.remaining_amount * p
     return [round(x) for x in received]
 

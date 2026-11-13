@@ -141,3 +141,18 @@ def test_money_beyond_twelve_weeks_is_reported_and_totals_add_up():
 def test_outgoings_beyond_the_last_week_are_reported():
     bills = [(date(2026, 11, 12), 10), (date(2027, 6, 1), 25)]
     assert analytics.bills_beyond_horizon(bills, AS_OF) == 25
+
+
+# ---- optional late fee ------------------------------------------------------------------
+
+def test_the_late_fee_is_optional_and_stored_when_given(client, team, auth):
+    plain = client.post("/api/obligations", json=body(), headers=auth("acc1")).json()
+    fee = client.post("/api/obligations", json=body(description="Tien dien", late_fee_percent_per_month=1.5), headers=auth("acc1")).json()
+    assert plain["late_fee_percent_per_month"] is None and fee["late_fee_percent_per_month"] == 1.5
+    listed = {o["description"]: o["late_fee_percent_per_month"] for o in client.get("/api/obligations", headers=auth("acc1")).json()["items"]}
+    assert listed == {"Tien thue van phong": None, "Tien dien": 1.5}
+
+
+@pytest.mark.parametrize("bad", [-1, 100.5, "abc"])
+def test_a_late_fee_outside_0_to_100_is_refused(client, team, auth, bad):
+    assert client.post("/api/obligations", json=body(late_fee_percent_per_month=bad), headers=auth("acc1")).status_code == 422
